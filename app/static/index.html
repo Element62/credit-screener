@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Credit Screenr</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Credit Screenr</p>
+          <h1>Issuer dashboard with bond-level drilldown</h1>
+          <p class="subhead">
+            Workbook-driven credit dashboard grouped by <code>PARENT_TICKER</code>, with login and refresh support.
+          </p>
+        </div>
+        <button id="logoutButton" class="secondary hidden">Log out</button>
+      </header>
+
+      <section id="loginCard" class="card login-card">
+        <h2>Sign in</h2>
+        <form id="loginForm">
+          <label>Username<input name="username" type="text" autocomplete="username" required /></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required /></label>
+          <button type="submit">Enter dashboard</button>
+          <p id="loginError" class="error hidden"></p>
+        </form>
+      </section>
+
+      <main id="app" class="hidden">
+        <section class="card">
+          <div class="toolbar">
+            <div class="toolbar-group">
+              <label>Search<input id="searchInput" type="text" placeholder="Issuer name or ticker" /></label>
+              <label>Sector<select id="sectorFilter"><option value="All">All</option></select></label>
+              <label>Distress tier<select id="distressFilter"><option value="All">All</option></select></label>
+            </div>
+            <div class="toolbar-group">
+              <label>Min face ($MM)<input id="minFaceInput" type="number" min="0" step="10" value="0" /></label>
+              <label>Sort by<select id="sortField"><option value="Par Upside ($MM)">Par Upside ($MM)</option><option value="Face ($BN)">Face ($BN)</option><option value="WA Price">WA Price</option><option value="OAS Delta (bps)">OAS Delta (bps)</option></select></label>
+              <label>Order<select id="sortDirection"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+            </div>
+          </div>
+          <div id="statusBar" class="status-bar"></div>
+        </section>
+
+        <section class="card">
+          <div class="table-wrap">
+            <table>
+              <thead id="issuerHead"></thead>
+              <tbody id="issuerBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="detailCard" class="card hidden">
+          <div class="detail-header">
+            <div>
+              <p id="detailTicker" class="eyebrow"></p>
+              <h2 id="detailTitle"></h2>
+            </div>
+          </div>
+          <div id="reportSummaryCard" class="report-summary hidden">
+            <div class="report-summary-header">
+              <div>
+                <p class="eyebrow">Latest Report</p>
+                <p id="reportMeta" class="status-bar"></p>
+              </div>
+              <div id="reportSentimentBadge"></div>
+            </div>
+            <ul id="reportBullets" class="report-bullets"></ul>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead id="detailHead"></thead>
+              <tbody id="detailBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Upload refreshed workbook</h2>
+          <form id="uploadForm" class="upload-form">
+            <input id="uploadInput" name="workbook" type="file" accept=".xlsx" required />
+            <button type="submit">Upload and refresh</button>
+          </form>
+          <div class="toolbar">
+            <button id="processReportsButton" type="button" class="secondary">Process latest reports</button>
+          </div>
+          <p id="uploadStatus" class="status-bar"></p>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
