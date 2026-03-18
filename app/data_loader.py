@@ -338,11 +338,8 @@ def load_workbook(path: Path) -> WorkbookData:
                 "SECTOR": "Sector",
                 "ISSUER_FACE_MM": "Face ($MM)",
                 "ISSUER_WTAVG_PX": "WA Price",
-                "ISSUER_DIST_TO_PAR": "Dist to Par (pts)",
-                "ISSUER_DISLOCATION_MM": "Par Upside ($MM)",
-                "ISSUER_DISLOCATION_52W_MM": "52W Peak Upside ($MM)",
-                "ISSUER_DISLOCATION_52W_SEC_MM": "52W Secured Upside ($MM)",
-                "ISSUER_DISLOCATION_52W_UNSEC_MM": "52W Unsecured Upside ($MM)",
+                "ISSUER_DISLOCATION_52W_SEC_MM": "52W PEAK UPSIDE SECURED ($MM)",
+                "ISSUER_DISLOCATION_52W_UNSEC_MM": "52W PEAK UPSIDE UNSECURED ($MM)",
                 "SECURED_PCT": "Secured (%)",
                 "SENIORITY_GAP": "Seniority Basis (pts)",
                 "GAP_SIGNAL": "Gap Signal",
@@ -365,14 +362,16 @@ def load_workbook(path: Path) -> WorkbookData:
 
     issuer_columns = [
         "PARENT_TICKER",
-        "Issuer", "Sector", "Face ($BN)", "WA Price", "Dist to Par (pts)",
-        "Par Upside ($MM)", "52W Peak Upside ($MM)", "52W Secured Upside ($MM)",
-        "52W Unsecured Upside ($MM)", "Secured (%)", "Seniority Basis (pts)", "Gap Signal",
+        "Issuer", "Sector", "Face ($BN)", "WA Price",
+        "52W PEAK UPSIDE SECURED ($MM)",
+        "52W PEAK UPSIDE UNSECURED ($MM)", "Secured (%)", "Seniority Basis (pts)", "Gap Signal",
         "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "OAS Delta (bps)",
         "Adj Unsecured Sprd Movement (bps)", "Sprd Movement Label", "# Tranches", "Face ($MM)",
     ]
     issuer_display = issuer_display[[col for col in issuer_columns if col in issuer_display.columns]].sort_values(
-        by=["Par Upside ($MM)", "Face ($MM)"], ascending=[False, False], na_position="last"
+        by=["Face ($MM)", "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)"],
+        ascending=[False, False, False],
+        na_position="last"
     )
 
     instrument_columns = [

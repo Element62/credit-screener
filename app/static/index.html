@@ -10,11 +10,7 @@
     <div class="page-shell">
       <header class="hero">
         <div>
-          <p class="eyebrow">Credit Screenr</p>
-          <h1>Issuer dashboard with bond-level drilldown</h1>
-          <p class="subhead">
-            Workbook-driven credit dashboard grouped by <code>PARENT_TICKER</code>, with login and refresh support.
-          </p>
+          <p class="eyebrow brand">Credit Screen</p>
         </div>
         <button id="logoutButton" class="secondary hidden">Log out</button>
       </header>
@@ -39,7 +35,7 @@
             </div>
             <div class="toolbar-group">
               <label>Min face ($MM)<input id="minFaceInput" type="number" min="0" step="10" value="0" /></label>
-              <label>Sort by<select id="sortField"><option value="Par Upside ($MM)">Par Upside ($MM)</option><option value="Face ($BN)">Face ($BN)</option><option value="WA Price">WA Price</option><option value="OAS Delta (bps)">OAS Delta (bps)</option></select></label>
+              <label>Sort by<select id="sortField"><option value="Face ($BN)">Face ($BN)</option><option value="WA Price">WA Price</option><option value="52W PEAK UPSIDE SECURED ($MM)">52W PEAK UPSIDE SECURED ($MM)</option><option value="52W PEAK UPSIDE UNSECURED ($MM)">52W PEAK UPSIDE UNSECURED ($MM)</option><option value="OAS Delta (bps)">OAS Delta (bps)</option></select></label>
               <label>Order<select id="sortDirection"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
             </div>
           </div>
@@ -61,16 +57,6 @@
               <p id="detailTicker" class="eyebrow"></p>
               <h2 id="detailTitle"></h2>
             </div>
-          </div>
-          <div id="reportSummaryCard" class="report-summary hidden">
-            <div class="report-summary-header">
-              <div>
-                <p class="eyebrow">Latest Report</p>
-                <p id="reportMeta" class="status-bar"></p>
-              </div>
-              <div id="reportSentimentBadge"></div>
-            </div>
-            <ul id="reportBullets" class="report-bullets"></ul>
           </div>
           <div class="table-wrap">
             <table>

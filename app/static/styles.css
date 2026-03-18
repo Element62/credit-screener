@@ -28,16 +28,15 @@ body {
 .page-shell { width: 100%; max-width: none; margin: 0; padding: 24px 24px 48px; }
 .hero {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 24px;
   align-items: flex-start;
   margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 2px solid rgba(17, 59, 116, 0.18);
 }
 .hero h1, .card h2 { margin: 0; font-weight: 600; letter-spacing: -0.03em; }
 .hero h1 { font-size: clamp(2rem, 4vw, 3.2rem); max-width: 14ch; color: var(--navy); }
 .eyebrow { margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.74rem; color: var(--accent); font-weight: 700; }
+.brand { font-size: 1.05rem; letter-spacing: 0.08em; }
 .subhead { max-width: 62ch; color: var(--muted); line-height: 1.5; }
 
 .card {
@@ -112,6 +111,19 @@ tbody tr.selected { background: rgba(11, 127, 90, 0.08); }
   text-align: left;
   font-weight: 700;
 }
+
+.sentiment-marker {
+  display: inline-block;
+  width: 0.58rem;
+  height: 0.58rem;
+  margin-left: 0.32rem;
+  border-radius: 2px;
+  vertical-align: super;
+}
+
+.sentiment-marker.good { background: var(--good); }
+.sentiment-marker.warn { background: var(--warn); }
+.sentiment-marker.bad { background: var(--bad); }
 
 .sort-header {
   min-height: auto;

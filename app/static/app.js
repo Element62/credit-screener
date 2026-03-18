@@ -12,10 +12,6 @@ const detailTicker = document.getElementById("detailTicker");
 const detailTitle = document.getElementById("detailTitle");
 const detailHead = document.getElementById("detailHead");
 const detailBody = document.getElementById("detailBody");
-const reportSummaryCard = document.getElementById("reportSummaryCard");
-const reportMeta = document.getElementById("reportMeta");
-const reportBullets = document.getElementById("reportBullets");
-const reportSentimentBadge = document.getElementById("reportSentimentBadge");
 const statusBar = document.getElementById("statusBar");
 const searchInput = document.getElementById("searchInput");
 const sectorFilter = document.getElementById("sectorFilter");
@@ -27,11 +23,27 @@ const uploadForm = document.getElementById("uploadForm");
 const uploadStatus = document.getElementById("uploadStatus");
 const processReportsButton = document.getElementById("processReportsButton");
 
-const issuerColumns = ["Issuer", "Sector", "Report Sentiment", "Face ($BN)", "WA Price", "Dist to Par (pts)", "Par Upside ($MM)", "52W Peak Upside ($MM)", "Secured (%)", "Seniority Basis (pts)", "Gap Signal", "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "OAS Delta (bps)", "# Tranches"];
+const issuerColumns = [
+  "Issuer",
+  "Sector",
+  "Face ($BN)",
+  "WA Price",
+  "52W PEAK UPSIDE SECURED ($MM)",
+  "52W PEAK UPSIDE UNSECURED ($MM)",
+  "Secured (%)",
+  "Seniority Basis (pts)",
+  "Gap Signal",
+  "<1Y",
+  "1-3Y",
+  "3-5Y",
+  "Nearest Maturity",
+  "OAS Delta (bps)",
+  "# Tranches",
+];
 const detailColumns = ["ID", "NAME", "PAYMENT_RANK", "MATURITY", "AMT_OUTSTANDING_MM", "PX_MID", "PX_MID_T90", "DIST_TO_PAR", "DISLOCATION_MM", "PX_HIGH_52W", "PX_LOW_52W", "OAS", "OAS_DELTA", "DISTRESS_TIER"];
 
 function fmt(value, digits = 2) {
-  if (value === null || value === undefined || value === "") return "—";
+  if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "number") return value.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
   return value;
 }
@@ -59,7 +71,7 @@ async function fetchJson(url, options = {}) {
 
 function sortIndicator(column) {
   if (sortField.value !== column) return "";
-  return sortDirection.value === "asc" ? " ▲" : " ▼";
+  return sortDirection.value === "asc" ? " ?" : " ?";
 }
 
 function renderIssuerTable() {
@@ -69,11 +81,10 @@ function renderIssuerTable() {
     const cells = issuerColumns.map((column) => {
       const value = row[column];
       if (column === "Issuer") {
-        return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}</button></td>`;
-      }
-      if (column === "Report Sentiment") {
-        if (row.REPORT_SENTIMENT_SCORE === null || row.REPORT_SENTIMENT_SCORE === undefined) return `<td>—</td>`;
-        return `<td><span class="pill ${row.REPORT_SENTIMENT_COLOR || ""}">${row.REPORT_SENTIMENT_SCORE} ${row.REPORT_SENTIMENT_LABEL || ""}</span></td>`;
+        const marker = row.REPORT_SENTIMENT_COLOR
+          ? `<sup class="sentiment-marker ${row.REPORT_SENTIMENT_COLOR}" title="${row.REPORT_SENTIMENT_LABEL || "Report sentiment"}"></sup>`
+          : "";
+        return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${marker}</button></td>`;
       }
       if (column === "Gap Signal") {
         return `<td><span class="${pillClass(value)}">${fmt(value, 0)}</span></td>`;
@@ -144,17 +155,6 @@ function renderIssuerDetail(parentTicker) {
   detailCard.classList.remove("hidden");
   detailTicker.textContent = parentTicker;
   detailTitle.textContent = `${issuer?.Issuer || parentTicker} capital stack`;
-  if (issuer?.REPORT_SUMMARY_BULLETS?.length) {
-    reportSummaryCard.classList.remove("hidden");
-    reportMeta.textContent = `Report date: ${issuer.REPORT_DATE || "n/a"}${issuer.REPORT_SOURCE_FILE ? ` | ${issuer.REPORT_SOURCE_FILE.split(/[\\\\/]/).pop()}` : ""}`;
-    reportSentimentBadge.innerHTML = `<span class="pill ${issuer.REPORT_SENTIMENT_COLOR || ""}">${issuer.REPORT_SENTIMENT_SCORE} ${issuer.REPORT_SENTIMENT_LABEL || ""}</span>`;
-    reportBullets.innerHTML = issuer.REPORT_SUMMARY_BULLETS.map((bullet) => `<li>${bullet}</li>`).join("");
-  } else {
-    reportSummaryCard.classList.add("hidden");
-    reportMeta.textContent = "";
-    reportSentimentBadge.innerHTML = "";
-    reportBullets.innerHTML = "";
-  }
   detailHead.innerHTML = `<tr>${detailColumns.map((column) => `<th>${column}</th>`).join("")}</tr>`;
   detailBody.innerHTML = rows.map((row) => {
     const cells = detailColumns.map((column) => {
@@ -175,7 +175,6 @@ async function loadDashboard() {
   state.selectedIssuer = null;
   state.instrumentMap = new Map();
   detailCard.classList.add("hidden");
-  reportSummaryCard.classList.add("hidden");
 
   sectorFilter.innerHTML = `<option value="All">All</option>${payload.filters.sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join("")}`;
   distressFilter.innerHTML = `<option value="All">All</option>${payload.filters.distress_tiers.map((tier) => `<option value="${tier}">${tier}</option>`).join("")}`;
