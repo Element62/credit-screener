@@ -29,26 +29,41 @@
         <section class="card">
           <div class="toolbar">
             <div class="toolbar-group">
-              <label>Search<input id="searchInput" type="text" placeholder="Issuer name or ticker" /></label>
+              <label>Search
+                <div class="search-field">
+                  <input id="searchInput" type="text" placeholder="Issuer name or ticker" />
+                  <button id="clearSearchButton" type="button" class="clear-search hidden" aria-label="Clear search">X</button>
+                </div>
+              </label>
               <label>Sector<select id="sectorFilter"><option value="All">All</option></select></label>
-              <label>Distress tier<select id="distressFilter"><option value="All">All</option></select></label>
             </div>
             <div class="toolbar-group">
-              <label>Min face ($MM)<input id="minFaceInput" type="number" min="0" step="10" value="0" /></label>
-              <label>Sort by<select id="sortField"><option value="Face ($BN)">Face ($BN)</option><option value="WA Price">WA Price</option><option value="52W PEAK UPSIDE SECURED ($MM)">52W PEAK UPSIDE SECURED ($MM)</option><option value="52W PEAK UPSIDE UNSECURED ($MM)">52W PEAK UPSIDE UNSECURED ($MM)</option><option value="OAS Delta (bps)">OAS Delta (bps)</option></select></label>
+              <label>Min issuer yield (%)<input id="issuerMinYieldInput" type="number" min="0" step="0.1" value="7" /></label>
+              <label>Sort by<select id="sortField"><option value="Face ($BN)">Face ($BN)</option><option value="WA Price">WA Price</option><option value="WA Yield">WA Yield</option><option value="52W PEAK UPSIDE SECURED ($MM)">52W PEAK UPSIDE SECURED ($MM)</option><option value="52W PEAK UPSIDE UNSECURED ($MM)">52W PEAK UPSIDE UNSECURED ($MM)</option></select></label>
               <label>Order<select id="sortDirection"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+              <button id="downloadIssuersButton" type="button" class="secondary">Download Issuer View</button>
             </div>
           </div>
           <div id="statusBar" class="status-bar"></div>
         </section>
 
-        <section class="card">
-          <div class="table-wrap">
+        <section class="card issuer-table-card">
+          <div class="table-wrap issuer-table-wrap">
             <table>
               <thead id="issuerHead"></thead>
               <tbody id="issuerBody"></tbody>
             </table>
           </div>
+        </section>
+
+        <section id="reportSummaryCard" class="card report-summary hidden">
+          <div class="detail-header">
+            <div>
+              <p class="eyebrow">Latest Report Summary</p>
+              <p id="reportMeta" class="status-bar"></p>
+            </div>
+          </div>
+          <ul id="reportBullets" class="report-bullets"></ul>
         </section>
 
         <section id="detailCard" class="card hidden">
@@ -59,6 +74,7 @@
             </div>
             <div class="toolbar-group detail-filter-group">
               <label>Min yield (%)<input id="detailMinYieldInput" type="number" min="0" step="0.1" value="7" /></label>
+              <button id="downloadDetailButton" type="button" class="secondary">Download Detail View</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -69,17 +85,6 @@
           </div>
         </section>
 
-        <section class="card">
-          <h2>Upload refreshed workbook</h2>
-          <form id="uploadForm" class="upload-form">
-            <input id="uploadInput" name="workbook" type="file" accept=".xlsx" required />
-            <button type="submit">Upload and refresh</button>
-          </form>
-          <div class="toolbar">
-            <button id="processReportsButton" type="button" class="secondary">Process latest reports</button>
-          </div>
-          <p id="uploadStatus" class="status-bar"></p>
-        </section>
       </main>
     </div>
 

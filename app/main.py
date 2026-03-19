@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from io import BytesIO
 import shutil
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+import pandas as pd
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .auth import SESSION_COOKIE, create_session_token, decode_session_token
@@ -83,6 +85,20 @@ def enrich_issuers_with_reports(dataset: WorkbookData) -> dict:
     }
 
 
+def build_excel_response(rows: list[dict], filename: str, sheet_name: str) -> StreamingResponse:
+    output = BytesIO()
+    df = pd.DataFrame(rows)
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name[:31] or "Sheet1")
+    output.seek(0)
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
 @app.get("/", response_class=FileResponse)
 def root() -> FileResponse:
     return FileResponse(Path(__file__).parent / "static" / "index.html")
@@ -127,7 +143,7 @@ def dashboard(_: str = Depends(get_current_user)) -> JSONResponse:
     return JSONResponse(enrich_issuers_with_reports(dataset))
 
 
-@app.get("/api/issuers/{parent_ticker}")
+@app.get("/api/issuer-detail")
 def issuer_detail(parent_ticker: str, _: str = Depends(get_current_user)) -> JSONResponse:
     dataset = ensure_data_loaded()
     rows = [row for row in dataset.instrument_rows if row.get("PARENT_TICKER") == parent_ticker]
@@ -136,6 +152,24 @@ def issuer_detail(parent_ticker: str, _: str = Depends(get_current_user)) -> JSO
     issuer_name = next((row.get("Issuer") for row in dataset.issuer_table if row.get("PARENT_TICKER") == parent_ticker), "")
     report = report_service.snapshot().get(normalize_company_name(str(issuer_name)))
     return JSONResponse({"issuer": parent_ticker, "rows": rows, "report": report})
+
+
+@app.post("/api/export/issuers")
+def export_issuers(payload: dict = Body(...), _: str = Depends(get_current_user)) -> StreamingResponse:
+    rows = payload.get("rows", [])
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=400, detail="rows must be a list")
+    return build_excel_response(rows, "issuer_view.xlsx", "Issuers")
+
+
+@app.post("/api/export/detail")
+def export_detail(payload: dict = Body(...), _: str = Depends(get_current_user)) -> StreamingResponse:
+    rows = payload.get("rows", [])
+    issuer = str(payload.get("issuer") or "detail_view").strip() or "detail_view"
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=400, detail="rows must be a list")
+    safe_name = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in issuer)[:80]
+    return build_excel_response(rows, f"{safe_name}.xlsx", "Detail")
 
 
 @app.post("/api/admin/upload")

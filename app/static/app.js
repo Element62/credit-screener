@@ -1,4 +1,4 @@
-const state = { issuers: [], filteredIssuers: [], filters: {}, metadata: {}, selectedIssuer: null, instrumentMap: new Map() };
+const state = { issuers: [], filteredIssuers: [], filters: {}, metadata: {}, selectedIssuer: null, instrumentMap: new Map(), detailRows: [] };
 
 const loginCard = document.getElementById("loginCard");
 const app = document.getElementById("app");
@@ -12,17 +12,19 @@ const detailTicker = document.getElementById("detailTicker");
 const detailTitle = document.getElementById("detailTitle");
 const detailHead = document.getElementById("detailHead");
 const detailBody = document.getElementById("detailBody");
+const reportSummaryCard = document.getElementById("reportSummaryCard");
+const reportMeta = document.getElementById("reportMeta");
+const reportBullets = document.getElementById("reportBullets");
 const detailMinYieldInput = document.getElementById("detailMinYieldInput");
 const statusBar = document.getElementById("statusBar");
 const searchInput = document.getElementById("searchInput");
+const clearSearchButton = document.getElementById("clearSearchButton");
 const sectorFilter = document.getElementById("sectorFilter");
-const distressFilter = document.getElementById("distressFilter");
-const minFaceInput = document.getElementById("minFaceInput");
+const issuerMinYieldInput = document.getElementById("issuerMinYieldInput");
 const sortField = document.getElementById("sortField");
 const sortDirection = document.getElementById("sortDirection");
-const uploadForm = document.getElementById("uploadForm");
-const uploadStatus = document.getElementById("uploadStatus");
-const processReportsButton = document.getElementById("processReportsButton");
+const downloadIssuersButton = document.getElementById("downloadIssuersButton");
+const downloadDetailButton = document.getElementById("downloadDetailButton");
 
 const issuerColumns = [
   "Issuer",
@@ -103,6 +105,35 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+async function downloadExcel(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    let message = "Download failed";
+    try {
+      const data = await response.json();
+      message = data.detail || message;
+    } catch {}
+    throw new Error(message);
+  }
+  const blob = await response.blob();
+  const contentDisposition = response.headers.get("Content-Disposition") || "";
+  const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  const filename = match ? match[1] : "export.xlsx";
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 function sortIndicator(column) {
   if (sortField.value !== column) return "";
   return sortDirection.value === "asc" ? " &uarr;" : " &darr;";
@@ -170,7 +201,13 @@ function renderIssuerTable() {
   }).join("");
 
   document.querySelectorAll("[data-issuer]").forEach((button) => {
-    button.addEventListener("click", () => renderIssuerDetail(button.dataset.issuer));
+    button.addEventListener("click", async () => {
+      try {
+        await openIssuerDetail(button.dataset.issuer);
+      } catch (error) {
+        uploadStatus.textContent = error.message;
+      }
+    });
   });
 
   document.querySelectorAll("[data-sort]").forEach((button) => {
@@ -190,22 +227,21 @@ function renderIssuerTable() {
 function applyFilters() {
   const search = searchInput.value.trim().toLowerCase();
   const sector = sectorFilter.value;
-  const distress = distressFilter.value;
-  const minFace = Number(minFaceInput.value || 0);
+  const minIssuerYield = Number(issuerMinYieldInput.value || 0);
   const sortBy = sortField.value;
   const ascending = sortDirection.value === "asc";
 
   let rows = [...state.issuers];
-  rows = rows.filter((row) => Number(row["Face ($MM)"] || 0) >= minFace);
+  rows = rows.filter((row) => {
+    const maxYield = Number(row["Max Yield"]);
+    return !Number.isNaN(maxYield) && maxYield >= minIssuerYield;
+  });
   if (sector !== "All") rows = rows.filter((row) => row.Sector === sector);
   if (search) {
     rows = rows.filter((row) =>
       String(row.Issuer || "").toLowerCase().includes(search) ||
       String(row.PARENT_TICKER || "").toLowerCase().includes(search)
     );
-  }
-  if (distress !== "All") {
-    rows = rows.filter((row) => (row.__distressTiers || []).includes(distress));
   }
 
   rows.sort((left, right) => {
@@ -220,17 +256,38 @@ function applyFilters() {
 
   state.filteredIssuers = rows;
   statusBar.textContent = `Anchor: ${state.metadata.anchor_date || "n/a"} | T-90: ${state.metadata.t90_date || "n/a"} | ${state.issuers.length} total issuers | Showing ${rows.length}`;
+  clearSearchButton.classList.toggle("hidden", !searchInput.value);
   renderIssuerTable();
 }
 
 function renderIssuerDetail(parentTicker) {
   const minYield = Number(detailMinYieldInput.value || 0);
-  const rows = (state.instrumentMap.get(parentTicker) || []).filter((row) => Number(row.YIELD) >= minYield);
+  const anchorDate = state.metadata.anchor_date ? new Date(state.metadata.anchor_date) : null;
+  const minMaturity = anchorDate ? new Date(anchorDate) : null;
+  if (minMaturity) minMaturity.setFullYear(minMaturity.getFullYear() + 1);
+  const rows = (state.instrumentMap.get(parentTicker) || []).filter((row) => {
+    const rowYield = Number(row.YIELD);
+    const rowAmount = Number(row.AMT_OUTSTANDING_MM);
+    const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
+    const rankText = String(row.PAYMENT_RANK || "").toLowerCase();
+    const maturityEligible = !minMaturity || (maturity instanceof Date && !Number.isNaN(maturity.getTime()) && maturity > minMaturity);
+    return rowYield >= minYield && rowAmount >= 200 && maturityEligible && !rankText.includes("subordinated");
+  });
+  state.detailRows = rows;
   const issuer = state.issuers.find((row) => row.PARENT_TICKER === parentTicker);
   state.selectedIssuer = parentTicker;
   detailCard.classList.remove("hidden");
   detailTicker.textContent = parentTicker;
   detailTitle.textContent = `${issuer?.Issuer || parentTicker} capital stack`;
+  if (issuer?.REPORT_SUMMARY_BULLETS?.length) {
+    reportSummaryCard.classList.remove("hidden");
+    reportMeta.textContent = issuer.REPORT_DATE ? `Report date: ${issuer.REPORT_DATE}` : "";
+    reportBullets.innerHTML = issuer.REPORT_SUMMARY_BULLETS.map((bullet) => `<li>${bullet}</li>`).join("");
+  } else {
+    reportSummaryCard.classList.add("hidden");
+    reportMeta.textContent = "";
+    reportBullets.innerHTML = "";
+  }
   detailHead.innerHTML = `<tr>${detailColumns.map((column) => `<th>${column.label}</th>`).join("")}</tr>`;
   detailBody.innerHTML = rows.map((row) => {
     const cells = detailColumns.map((column) => {
@@ -245,6 +302,15 @@ function renderIssuerDetail(parentTicker) {
   renderIssuerTable();
 }
 
+async function openIssuerDetail(parentTicker) {
+  if (!parentTicker || parentTicker === "null" || parentTicker === "undefined") return;
+  if (!state.instrumentMap.has(parentTicker)) {
+    const payload = await fetchJson(`/api/issuer-detail?parent_ticker=${encodeURIComponent(parentTicker)}`);
+    state.instrumentMap.set(payload.issuer, payload.rows);
+  }
+  renderIssuerDetail(parentTicker);
+}
+
 async function loadDashboard() {
   const payload = await fetchJson("/api/dashboard");
   state.issuers = payload.issuers;
@@ -252,18 +318,11 @@ async function loadDashboard() {
   state.metadata = payload.metadata;
   state.selectedIssuer = null;
   state.instrumentMap = new Map();
+  state.detailRows = [];
   detailCard.classList.add("hidden");
+  reportSummaryCard.classList.add("hidden");
 
   sectorFilter.innerHTML = `<option value="All">All</option>${payload.filters.sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join("")}`;
-  distressFilter.innerHTML = `<option value="All">All</option>${payload.filters.distress_tiers.map((tier) => `<option value="${tier}">${tier}</option>`).join("")}`;
-
-  const detailPayloads = await Promise.all(state.issuers.map((issuer) => fetchJson(`/api/issuers/${encodeURIComponent(issuer.PARENT_TICKER)}`)));
-  detailPayloads.forEach((payload) => state.instrumentMap.set(payload.issuer, payload.rows));
-
-  state.issuers = state.issuers.map((issuer) => ({
-    ...issuer,
-    __distressTiers: Array.from(new Set((state.instrumentMap.get(issuer.PARENT_TICKER) || []).map((row) => row.DISTRESS_TIER).filter(Boolean))),
-  }));
 
   applyFilters();
 }
@@ -300,9 +359,15 @@ logoutButton.addEventListener("click", async () => {
   window.location.reload();
 });
 
-[searchInput, sectorFilter, distressFilter, minFaceInput, sortField, sortDirection].forEach((element) => {
+[searchInput, sectorFilter, issuerMinYieldInput, sortField, sortDirection].forEach((element) => {
   element.addEventListener("input", applyFilters);
   element.addEventListener("change", applyFilters);
+});
+
+clearSearchButton.addEventListener("click", () => {
+  searchInput.value = "";
+  applyFilters();
+  searchInput.focus();
 });
 
 [detailMinYieldInput].forEach((element) => {
@@ -314,28 +379,13 @@ logoutButton.addEventListener("click", async () => {
   });
 });
 
-uploadForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  uploadStatus.textContent = "Uploading workbook...";
-  const formData = new FormData(uploadForm);
-  try {
-    const payload = await fetchJson("/api/admin/upload", { method: "POST", body: formData });
-    uploadStatus.textContent = `Workbook refreshed. Anchor date: ${payload.metadata.anchor_date || "n/a"}.`;
-    await loadDashboard();
-  } catch (error) {
-    uploadStatus.textContent = error.message;
-  }
+downloadIssuersButton.addEventListener("click", async () => {
+  await downloadExcel("/api/export/issuers", { rows: state.filteredIssuers });
 });
 
-processReportsButton.addEventListener("click", async () => {
-  uploadStatus.textContent = "Processing latest reports...";
-  try {
-    const payload = await fetchJson("/api/admin/process-reports", { method: "POST" });
-    uploadStatus.textContent = `Processed report cache refreshed. ${payload.processed_report_count} report record(s) available.`;
-    await loadDashboard();
-  } catch (error) {
-    uploadStatus.textContent = error.message;
-  }
+downloadDetailButton.addEventListener("click", async () => {
+  if (!state.selectedIssuer) return;
+  await downloadExcel("/api/export/detail", { issuer: state.selectedIssuer, rows: state.detailRows });
 });
 
 checkSession();

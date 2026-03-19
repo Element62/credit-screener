@@ -137,13 +137,17 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         face = pd.to_numeric(group["AMT_OUTSTANDING"], errors="coerce")
         px = pd.to_numeric(group["PX_MID"], errors="coerce")
         bond_yield = pd.to_numeric(group["YIELD"], errors="coerce") if "YIELD" in group.columns else pd.Series(index=group.index, dtype="float64")
+        maturity = pd.to_datetime(group["MATURITY"], errors="coerce")
+        rank_text = group["PAYMENT_RANK"].fillna("").astype(str).str.lower()
+        eligible_metric_mask = face.notna() & (face >= 200_000_000) & (maturity > today + pd.DateOffset(years=1)) & ~rank_text.str.contains("subordinated")
         face_sum = face.sum()
-        px_mask = px.notna() & face.notna()
+        px_mask = px.notna() & (px > 0) & eligible_metric_mask
         px_face_sum = face[px_mask].sum()
         wtavg_px = (px[px_mask] * face[px_mask]).sum() / px_face_sum if px_face_sum > 0 else pd.NA
-        yield_mask = bond_yield.notna() & face.notna()
+        yield_mask = bond_yield.notna() & (bond_yield > 0) & eligible_metric_mask
         yield_face_sum = face[yield_mask].sum()
         wtavg_yield = (bond_yield[yield_mask] * face[yield_mask]).sum() / yield_face_sum if yield_face_sum > 0 else pd.NA
+        max_yield = bond_yield[yield_mask].max() if yield_mask.any() else pd.NA
         secured_face = face[group["_IS_SECURED"]].sum()
         secured_pct = secured_face / face_sum * 100 if face_sum > 0 else pd.NA
 
@@ -156,8 +160,6 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
             seniority_gap = px_most_senior - px_most_junior
         else:
             seniority_gap = pd.NA
-
-        maturity = pd.to_datetime(group["MATURITY"], errors="coerce")
 
         def wall(start: pd.Timestamp, end: pd.Timestamp) -> tuple[float, float]:
             mask = maturity.between(start, end)
@@ -175,6 +177,7 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
                 "ISSUER_FACE_MM": face_sum / 1e6,
                 "ISSUER_WTAVG_PX": wtavg_px,
                 "ISSUER_WTAVG_YIELD": wtavg_yield,
+                "ISSUER_MAX_YIELD": max_yield,
                 "ISSUER_DIST_TO_PAR": 100.0 - wtavg_px if pd.notna(wtavg_px) else pd.NA,
                 "ISSUER_DISLOCATION_MM": group["DISLOCATION_MM"].sum(),
                 "ISSUER_DISLOCATION_52W_MM": group["DISLOCATION_52W_MM"].sum(),
@@ -348,6 +351,7 @@ def load_workbook(path: Path) -> WorkbookData:
                 "ISSUER_FACE_MM": "Face ($MM)",
                 "ISSUER_WTAVG_PX": "WA Price",
                 "ISSUER_WTAVG_YIELD": "WA Yield",
+                "ISSUER_MAX_YIELD": "Max Yield",
                 "ISSUER_DISLOCATION_52W_SEC_MM": "52W PEAK UPSIDE SECURED ($MM)",
                 "ISSUER_DISLOCATION_52W_UNSEC_MM": "52W PEAK UPSIDE UNSECURED ($MM)",
                 "SECURED_PCT": "Secured (%)",
@@ -376,7 +380,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "52W PEAK UPSIDE SECURED ($MM)",
         "52W PEAK UPSIDE UNSECURED ($MM)", "Secured (%)", "Seniority Basis (pts)", "Gap Signal",
         "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "OAS Delta (bps)",
-        "Adj Unsecured Sprd Movement (bps)", "Sprd Movement Label", "# Tranches", "Face ($MM)",
+        "Adj Unsecured Sprd Movement (bps)", "Sprd Movement Label", "# Tranches", "Face ($MM)", "Max Yield",
     ]
     issuer_display = issuer_display[[col for col in issuer_columns if col in issuer_display.columns]].sort_values(
         by=["Face ($MM)", "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)"],

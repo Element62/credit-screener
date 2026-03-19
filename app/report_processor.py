@@ -98,10 +98,20 @@ def write_report_summary_workbook(records: dict[str, dict[str, Any]], workbook_p
     df.to_excel(workbook_path, index=False)
 
 
-def load_report_summary_workbook(workbook_path: Path) -> dict[str, dict[str, Any]]:
-    if not workbook_path.exists():
+def _first_present(row: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in row and row.get(key) is not None:
+            return row.get(key)
+    return None
+
+
+def load_report_summary_table(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
         return {}
-    df = pd.read_excel(workbook_path)
+    if path.suffix.lower() == ".csv":
+        df = pd.read_csv(path)
+    else:
+        df = pd.read_excel(path)
 
     def clean_scalar(value: Any) -> Any:
         if pd.isna(value):
@@ -110,23 +120,25 @@ def load_report_summary_workbook(workbook_path: Path) -> dict[str, dict[str, Any
 
     records: dict[str, dict[str, Any]] = {}
     for row in df.to_dict(orient="records"):
-        issuer_name = str(clean_scalar(row.get("Issuer Name")) or "").strip()
+        issuer_name = str(clean_scalar(_first_present(row, "Issuer Name", "ISSUER NAME", "ISSUER_NAME", "Company Name", "COMPANY NAME", "COMPANY_NAME")) or "").strip()
         if not issuer_name:
             continue
-        company_key = str(clean_scalar(row.get("Company Key")) or normalize_company_name(issuer_name))
-        summary_text = str(clean_scalar(row.get("Bullet Point Summary")) or "")
-        bullets = [line.strip() for line in summary_text.splitlines() if line.strip()]
+        company_key = str(clean_scalar(_first_present(row, "Company Key", "COMPANY KEY", "COMPANY_KEY")) or normalize_company_name(issuer_name))
+        summary_text = str(clean_scalar(_first_present(row, "Bullet Point Summary", "BULLET POINT SUMMARY", "Bulleted Summary", "BULLETED SUMMARY", "SUMMARY")) or "")
+        bullets = [line.strip().lstrip("•").lstrip("â€¢").strip() for line in summary_text.splitlines() if line.strip()]
+        if len(bullets) <= 1 and ";" in summary_text:
+            bullets = [segment.strip().lstrip("•").lstrip("â€¢").strip() for segment in summary_text.split(";") if segment.strip()]
         records[company_key] = {
             "company_name": issuer_name,
             "company_key": company_key,
-            "report_date": clean_scalar(row.get("Report Date")),
-            "source_file": clean_scalar(row.get("Source File")),
+            "report_date": clean_scalar(_first_present(row, "Report Date", "REPORT DATE", "REPORT_DATE", "Date", "DATE")),
+            "source_file": clean_scalar(_first_present(row, "Source File", "SOURCE FILE", "SOURCE_FILE", "File Name", "FILE NAME", "FILE_NAME")),
             "summary_bullets": bullets,
-            "sentiment_score": int(clean_scalar(row.get("Sentiment Score")) or 0) if clean_scalar(row.get("Sentiment Score")) is not None else None,
-            "sentiment_label": clean_scalar(row.get("Sentiment")) or "",
-            "sentiment_color": clean_scalar(row.get("Sentiment Color")) or "",
-            "processing_status": clean_scalar(row.get("Processing Status")) or "",
-            "processing_error": clean_scalar(row.get("Processing Error")) or "",
+            "sentiment_score": int(clean_scalar(_first_present(row, "Sentiment Score", "SENTIMENT SCORE", "SENTIMENT_SCORE")) or 0) if clean_scalar(_first_present(row, "Sentiment Score", "SENTIMENT SCORE", "SENTIMENT_SCORE")) is not None else None,
+            "sentiment_label": clean_scalar(_first_present(row, "Sentiment", "SENTIMENT", "Sentiment Score/Analysis", "SENTIMENT SCORE/ANALYSIS")) or "",
+            "sentiment_color": clean_scalar(_first_present(row, "Sentiment Color", "SENTIMENT COLOR", "SENTIMENT_COLOR")) or "",
+            "processing_status": clean_scalar(_first_present(row, "Processing Status", "PROCESSING STATUS", "PROCESSING_STATUS")) or "",
+            "processing_error": clean_scalar(_first_present(row, "Processing Error", "PROCESSING ERROR", "PROCESSING_ERROR")) or "",
         }
     return records
 
@@ -280,4 +292,12 @@ class ReportProcessorService:
         )
 
     def snapshot(self) -> dict[str, dict[str, Any]]:
-        return load_report_summary_workbook(self.summary_workbook_path)
+        candidate_paths = [
+            self.summary_workbook_path.parent.parent / "report_summaries.csv",
+            self.summary_workbook_path,
+            self.summary_workbook_path.with_suffix(".csv"),
+        ]
+        for path in candidate_paths:
+            if path.exists():
+                return load_report_summary_table(path)
+        return {}
