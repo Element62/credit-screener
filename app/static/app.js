@@ -12,6 +12,7 @@ const detailTicker = document.getElementById("detailTicker");
 const detailTitle = document.getElementById("detailTitle");
 const detailHead = document.getElementById("detailHead");
 const detailBody = document.getElementById("detailBody");
+const detailMinYieldInput = document.getElementById("detailMinYieldInput");
 const statusBar = document.getElementById("statusBar");
 const searchInput = document.getElementById("searchInput");
 const sectorFilter = document.getElementById("sectorFilter");
@@ -28,24 +29,49 @@ const issuerColumns = [
   "Sector",
   "Face ($BN)",
   "WA Price",
+  "WA Yield",
   "52W PEAK UPSIDE SECURED ($MM)",
   "52W PEAK UPSIDE UNSECURED ($MM)",
   "Secured (%)",
   "Seniority Basis (pts)",
-  "Gap Signal",
   "<1Y",
   "1-3Y",
   "3-5Y",
   "Nearest Maturity",
-  "OAS Delta (bps)",
   "# Tranches",
 ];
-const detailColumns = ["ID", "NAME", "PAYMENT_RANK", "MATURITY", "AMT_OUTSTANDING_MM", "PX_MID", "PX_MID_T90", "DIST_TO_PAR", "DISLOCATION_MM", "PX_HIGH_52W", "PX_LOW_52W", "OAS", "OAS_DELTA", "DISTRESS_TIER"];
+
+const detailColumns = [
+  { key: "ID", label: "ID" },
+  { key: "NAME", label: "Name" },
+  { key: "PAYMENT_RANK", label: "Rank" },
+  { key: "MATURITY", label: "Mat" },
+  { key: "AMT_OUTSTANDING_MM", label: "Amt Out ($MM)" },
+  { key: "PX_MID", label: "Current PX" },
+  { key: "PRICE_MOVE_3M", label: "3M Price Move" },
+  { key: "YIELD", label: "Yield" },
+  { key: "PRICE_RANGE", label: "Price Range" },
+];
 
 function fmt(value, digits = 2) {
   if (value === null || value === undefined || value === "") return "-";
-  if (typeof value === "number") return value.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+  if (typeof value === "number") {
+    return value.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+  }
   return value;
+}
+
+function issuerDigits(column) {
+  if (["Face ($BN)", "WA Price", "WA Yield", "Secured (%)"].includes(column)) return 1;
+  if (["52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "OAS Delta (bps)", "# Tranches"].includes(column)) return 0;
+  return 2;
+}
+
+function detailDigits(column) {
+  if (column === "AMT_OUTSTANDING_MM") return 0;
+  if (["PX_MID", "PRICE_MOVE_3M", "YIELD", "PX_HIGH_52W", "PX_LOW_52W"].includes(column)) return 1;
+  if (["OAS", "OAS_DELTA"].includes(column)) return 0;
+  return 2;
 }
 
 function pillClass(value) {
@@ -54,6 +80,14 @@ function pillClass(value) {
   if (["Stressed", "Elevated"].includes(value)) return "pill warn";
   if (["Premium", "Normal", "Par-Adjacent"].includes(value)) return "pill good";
   return "pill";
+}
+
+function seniorityClass(value) {
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return "";
+  if (numeric < 10) return "basis-low";
+  if (numeric < 20) return "basis-mid";
+  return "basis-high";
 }
 
 async function fetchJson(url, options = {}) {
@@ -71,14 +105,55 @@ async function fetchJson(url, options = {}) {
 
 function sortIndicator(column) {
   if (sortField.value !== column) return "";
-  return sortDirection.value === "asc" ? " ?" : " ?";
+  return sortDirection.value === "asc" ? " &uarr;" : " &darr;";
+}
+
+function renderPriceMove(row) {
+  const current = Number(row.PX_MID);
+  const prior = Number(row.PX_MID_T90);
+  if (Number.isNaN(current) || Number.isNaN(prior)) return "-";
+  const move = current - prior;
+  const cssClass = move < 0 ? "negative" : move > 0 ? "positive" : "neutral";
+  const prefix = move > 0 ? "+" : "";
+  return `<span class="price-move ${cssClass}">${prefix}${fmt(move, 1)}</span>`;
+}
+
+function renderPriceRange(row) {
+  const low = Number(row.PX_LOW_52W);
+  const high = Number(row.PX_HIGH_52W);
+  const current = Number(row.PX_MID);
+  if (Number.isNaN(low) || Number.isNaN(high) || Number.isNaN(current) || high <= low) return "-";
+  const clamped = Math.min(Math.max(current, low), high);
+  const pct = ((clamped - low) / (high - low)) * 100;
+  return `
+    <div class="price-range-cell">
+      <span class="range-value low">${fmt(low, 1)}</span>
+      <div class="range-track"><span class="range-dot" style="left:${pct}%"></span></div>
+      <span class="range-value high">${fmt(high, 1)}</span>
+    </div>
+  `;
 }
 
 function renderIssuerTable() {
-  issuerHead.innerHTML = `<tr>${issuerColumns.map((column) => `<th><button type="button" class="sort-header" data-sort="${column}">${column}${sortIndicator(column)}</button></th>`).join("")}</tr>`;
+  const leadingColumns = ["Issuer", "Sector", "Face ($BN)", "WA Price", "WA Yield"];
+  const trailingColumns = ["Secured (%)", "Seniority Basis (pts)", "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "# Tranches"];
+  const tableColumnOrder = [...leadingColumns, "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", ...trailingColumns];
+
+  issuerHead.innerHTML = `
+    <tr>
+      ${leadingColumns.map((column) => `<th rowspan="2"><button type="button" class="sort-header" data-sort="${column}">${column}${sortIndicator(column)}</button></th>`).join("")}
+      <th colspan="2" class="group-header">52W Peak Upside</th>
+      ${trailingColumns.map((column) => `<th rowspan="2"><button type="button" class="sort-header" data-sort="${column}">${column}${sortIndicator(column)}</button></th>`).join("")}
+    </tr>
+    <tr>
+      <th><button type="button" class="sort-header" data-sort="52W PEAK UPSIDE SECURED ($MM)">Secured ($MM)${sortIndicator("52W PEAK UPSIDE SECURED ($MM)")}</button></th>
+      <th><button type="button" class="sort-header" data-sort="52W PEAK UPSIDE UNSECURED ($MM)">Unsecured ($MM)${sortIndicator("52W PEAK UPSIDE UNSECURED ($MM)")}</button></th>
+    </tr>
+  `;
+
   issuerBody.innerHTML = state.filteredIssuers.map((row) => {
     const selected = state.selectedIssuer === row.PARENT_TICKER ? "selected" : "";
-    const cells = issuerColumns.map((column) => {
+    const cells = tableColumnOrder.map((column) => {
       const value = row[column];
       if (column === "Issuer") {
         const marker = row.REPORT_SENTIMENT_COLOR
@@ -86,10 +161,10 @@ function renderIssuerTable() {
           : "";
         return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${marker}</button></td>`;
       }
-      if (column === "Gap Signal") {
-        return `<td><span class="${pillClass(value)}">${fmt(value, 0)}</span></td>`;
+      if (column === "Seniority Basis (pts)") {
+        return `<td><span class="basis-value ${seniorityClass(value)}">${fmt(value, 1)}</span></td>`;
       }
-      return `<td>${fmt(value)}</td>`;
+      return `<td>${fmt(value, issuerDigits(column))}</td>`;
     }).join("");
     return `<tr class="${selected}">${cells}</tr>`;
   }).join("");
@@ -122,11 +197,11 @@ function applyFilters() {
 
   let rows = [...state.issuers];
   rows = rows.filter((row) => Number(row["Face ($MM)"] || 0) >= minFace);
-  if (sector !== "All") rows = rows.filter((row) => row["Sector"] === sector);
+  if (sector !== "All") rows = rows.filter((row) => row.Sector === sector);
   if (search) {
     rows = rows.filter((row) =>
-      String(row["Issuer"] || "").toLowerCase().includes(search) ||
-      String(row["PARENT_TICKER"] || "").toLowerCase().includes(search)
+      String(row.Issuer || "").toLowerCase().includes(search) ||
+      String(row.PARENT_TICKER || "").toLowerCase().includes(search)
     );
   }
   if (distress !== "All") {
@@ -149,18 +224,21 @@ function applyFilters() {
 }
 
 function renderIssuerDetail(parentTicker) {
-  const rows = state.instrumentMap.get(parentTicker) || [];
+  const minYield = Number(detailMinYieldInput.value || 0);
+  const rows = (state.instrumentMap.get(parentTicker) || []).filter((row) => Number(row.YIELD) >= minYield);
   const issuer = state.issuers.find((row) => row.PARENT_TICKER === parentTicker);
   state.selectedIssuer = parentTicker;
   detailCard.classList.remove("hidden");
   detailTicker.textContent = parentTicker;
   detailTitle.textContent = `${issuer?.Issuer || parentTicker} capital stack`;
-  detailHead.innerHTML = `<tr>${detailColumns.map((column) => `<th>${column}</th>`).join("")}</tr>`;
+  detailHead.innerHTML = `<tr>${detailColumns.map((column) => `<th>${column.label}</th>`).join("")}</tr>`;
   detailBody.innerHTML = rows.map((row) => {
     const cells = detailColumns.map((column) => {
-      const value = row[column];
-      if (column === "DISTRESS_TIER") return `<td><span class="${pillClass(value)}">${fmt(value, 0)}</span></td>`;
-      return `<td>${fmt(value)}</td>`;
+      const value = row[column.key];
+      if (column.key === "PRICE_MOVE_3M") return `<td>${renderPriceMove(row)}</td>`;
+      if (column.key === "PRICE_RANGE") return `<td>${renderPriceRange(row)}</td>`;
+      const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
+      return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
     }).join("");
     return `<tr>${cells}</tr>`;
   }).join("");
@@ -225,6 +303,15 @@ logoutButton.addEventListener("click", async () => {
 [searchInput, sectorFilter, distressFilter, minFaceInput, sortField, sortDirection].forEach((element) => {
   element.addEventListener("input", applyFilters);
   element.addEventListener("change", applyFilters);
+});
+
+[detailMinYieldInput].forEach((element) => {
+  element.addEventListener("input", () => {
+    if (state.selectedIssuer) renderIssuerDetail(state.selectedIssuer);
+  });
+  element.addEventListener("change", () => {
+    if (state.selectedIssuer) renderIssuerDetail(state.selectedIssuer);
+  });
 });
 
 uploadForm.addEventListener("submit", async (event) => {

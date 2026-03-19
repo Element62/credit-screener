@@ -110,7 +110,7 @@ def _normalize_master(df_master: pd.DataFrame) -> pd.DataFrame:
 
 def _normalize_spread(df_spread: pd.DataFrame) -> pd.DataFrame:
     df = df_spread.copy()
-    for col in ["PX_MID", "OAS", "I_SPREAD", "Z_SPREAD"]:
+    for col in ["PX_MID", "YIELD", "OAS", "I_SPREAD", "Z_SPREAD"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     df["DATE"] = _to_date_string(df["DATE"])
@@ -136,8 +136,14 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
     def compute(group: pd.DataFrame) -> pd.Series:
         face = pd.to_numeric(group["AMT_OUTSTANDING"], errors="coerce")
         px = pd.to_numeric(group["PX_MID"], errors="coerce")
+        bond_yield = pd.to_numeric(group["YIELD"], errors="coerce") if "YIELD" in group.columns else pd.Series(index=group.index, dtype="float64")
         face_sum = face.sum()
-        wtavg_px = (px * face).sum() / face_sum if face_sum > 0 else pd.NA
+        px_mask = px.notna() & face.notna()
+        px_face_sum = face[px_mask].sum()
+        wtavg_px = (px[px_mask] * face[px_mask]).sum() / px_face_sum if px_face_sum > 0 else pd.NA
+        yield_mask = bond_yield.notna() & face.notna()
+        yield_face_sum = face[yield_mask].sum()
+        wtavg_yield = (bond_yield[yield_mask] * face[yield_mask]).sum() / yield_face_sum if yield_face_sum > 0 else pd.NA
         secured_face = face[group["_IS_SECURED"]].sum()
         secured_pct = secured_face / face_sum * 100 if face_sum > 0 else pd.NA
 
@@ -168,6 +174,7 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
             {
                 "ISSUER_FACE_MM": face_sum / 1e6,
                 "ISSUER_WTAVG_PX": wtavg_px,
+                "ISSUER_WTAVG_YIELD": wtavg_yield,
                 "ISSUER_DIST_TO_PAR": 100.0 - wtavg_px if pd.notna(wtavg_px) else pd.NA,
                 "ISSUER_DISLOCATION_MM": group["DISLOCATION_MM"].sum(),
                 "ISSUER_DISLOCATION_52W_MM": group["DISLOCATION_52W_MM"].sum(),
@@ -286,12 +293,14 @@ def load_workbook(path: Path) -> WorkbookData:
     anchor_date = spread_dates[-1] if spread_dates else None
     t90_date = spread_dates[0] if len(spread_dates) > 1 else anchor_date
 
-    df_anchor = df_spread[df_spread["DATE"] == anchor_date].drop(columns=["DATE"]).rename(
-        columns={"PX_MID": "PX_MID", "OAS": "OAS", "I_SPREAD": "I_SPREAD", "Z_SPREAD": "Z_SPREAD"}
-    )
-    df_t90 = df_spread[df_spread["DATE"] == t90_date].drop(columns=["DATE"]).rename(
-        columns={"PX_MID": "PX_MID_T90", "OAS": "OAS_T90", "I_SPREAD": "I_SPREAD_T90", "Z_SPREAD": "Z_SPREAD_T90"}
-    )
+    anchor_rename = {"PX_MID": "PX_MID", "OAS": "OAS", "I_SPREAD": "I_SPREAD", "Z_SPREAD": "Z_SPREAD"}
+    t90_rename = {"PX_MID": "PX_MID_T90", "OAS": "OAS_T90", "I_SPREAD": "I_SPREAD_T90", "Z_SPREAD": "Z_SPREAD_T90"}
+    if "YIELD" in df_spread.columns:
+        anchor_rename["YIELD"] = "YIELD"
+        t90_rename["YIELD"] = "YIELD_T90"
+
+    df_anchor = df_spread[df_spread["DATE"] == anchor_date].drop(columns=["DATE"]).rename(columns=anchor_rename)
+    df_t90 = df_spread[df_spread["DATE"] == t90_date].drop(columns=["DATE"]).rename(columns=t90_rename)
     df = (
         df_master.merge(df_anchor, on="ID", how="left")
         .merge(df_t90, on="ID", how="left")
@@ -338,6 +347,7 @@ def load_workbook(path: Path) -> WorkbookData:
                 "SECTOR": "Sector",
                 "ISSUER_FACE_MM": "Face ($MM)",
                 "ISSUER_WTAVG_PX": "WA Price",
+                "ISSUER_WTAVG_YIELD": "WA Yield",
                 "ISSUER_DISLOCATION_52W_SEC_MM": "52W PEAK UPSIDE SECURED ($MM)",
                 "ISSUER_DISLOCATION_52W_UNSEC_MM": "52W PEAK UPSIDE UNSECURED ($MM)",
                 "SECURED_PCT": "Secured (%)",
@@ -362,7 +372,7 @@ def load_workbook(path: Path) -> WorkbookData:
 
     issuer_columns = [
         "PARENT_TICKER",
-        "Issuer", "Sector", "Face ($BN)", "WA Price",
+        "Issuer", "Sector", "Face ($BN)", "WA Price", "WA Yield",
         "52W PEAK UPSIDE SECURED ($MM)",
         "52W PEAK UPSIDE UNSECURED ($MM)", "Secured (%)", "Seniority Basis (pts)", "Gap Signal",
         "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "OAS Delta (bps)",
@@ -376,7 +386,7 @@ def load_workbook(path: Path) -> WorkbookData:
 
     instrument_columns = [
         "ID", "PARENT_TICKER", "NAME", "PAYMENT_RANK", "MATURITY", "AMT_OUTSTANDING",
-        "PX_MID", "PX_MID_T90", "DIST_TO_PAR", "DISLOCATION_MM", "PX_HIGH_52W", "DATE_OF_HIGH",
+        "PX_MID", "PX_MID_T90", "YIELD", "YIELD_T90", "DIST_TO_PAR", "DISLOCATION_MM", "PX_HIGH_52W", "DATE_OF_HIGH",
         "PX_LOW_52W", "DATE_OF_LOW", "DISLOCATION_52W_MM", "OAS", "OAS_T90", "OAS_DELTA",
         "DISTRESS_TIER", "SECTOR", "COUNTRY", "CPN_TYPE", "CPN_VALUE",
     ]
