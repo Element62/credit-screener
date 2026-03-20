@@ -40,7 +40,6 @@ const detailBody = document.getElementById("detailBody");
 const reportSummaryCard = document.getElementById("reportSummaryCard");
 const reportMeta = document.getElementById("reportMeta");
 const reportBullets = document.getElementById("reportBullets");
-const detailMinYieldInput = document.getElementById("detailMinYieldInput");
 const statusBar = document.getElementById("statusBar");
 const searchInput = document.getElementById("searchInput");
 const clearSearchButton = document.getElementById("clearSearchButton");
@@ -453,11 +452,19 @@ function applyFilters() {
   state.filteredIssuers = rows;
   statusBar.textContent = `Anchor: ${state.metadata.anchor_date || "n/a"} | T-90: ${state.metadata.t90_date || "n/a"} | ${state.issuers.length} total issuers | Showing ${rows.length}`;
   clearSearchButton.classList.toggle("hidden", !searchInput.value);
+  if (state.selectedIssuer && !rows.some((row) => row.PARENT_TICKER === state.selectedIssuer)) {
+    state.selectedIssuer = null;
+    detailCard.classList.add("hidden");
+    reportSummaryCard.classList.add("hidden");
+  } else if (state.selectedIssuer) {
+    renderIssuerDetail(state.selectedIssuer);
+    return;
+  }
   renderIssuerTable();
 }
 
 function renderIssuerDetail(parentTicker) {
-  const minYield = Number(detailMinYieldInput.value || 0);
+  const minYield = Number(issuerMinYieldInput.value || 0);
   const anchorDate = state.metadata.anchor_date ? new Date(state.metadata.anchor_date) : null;
   const minMaturity = anchorDate ? new Date(anchorDate) : null;
   if (minMaturity) minMaturity.setFullYear(minMaturity.getFullYear() + 1);
@@ -585,15 +592,6 @@ clearSearchButton.addEventListener("click", () => {
   searchInput.value = "";
   applyFilters();
   searchInput.focus();
-});
-
-[detailMinYieldInput].forEach((element) => {
-  element.addEventListener("input", () => {
-    if (state.selectedIssuer) renderIssuerDetail(state.selectedIssuer);
-  });
-  element.addEventListener("change", () => {
-    if (state.selectedIssuer) renderIssuerDetail(state.selectedIssuer);
-  });
 });
 
 downloadIssuersButton.addEventListener("click", async () => {
