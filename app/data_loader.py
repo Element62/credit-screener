@@ -140,6 +140,7 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         maturity = pd.to_datetime(group["MATURITY"], errors="coerce")
         rank_text = group["PAYMENT_RANK"].fillna("").astype(str).str.lower()
         eligible_metric_mask = face.notna() & (face >= 200_000_000) & (maturity > today + pd.DateOffset(years=1)) & ~rank_text.str.contains("subordinated")
+        eligible_yield_screen_mask = eligible_metric_mask & px.notna() & (px <= 95)
         face_sum = face.sum()
         px_mask = px.notna() & (px > 0) & eligible_metric_mask
         px_face_sum = face[px_mask].sum()
@@ -147,7 +148,8 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         yield_mask = bond_yield.notna() & (bond_yield > 0) & eligible_metric_mask
         yield_face_sum = face[yield_mask].sum()
         wtavg_yield = (bond_yield[yield_mask] * face[yield_mask]).sum() / yield_face_sum if yield_face_sum > 0 else pd.NA
-        max_yield = bond_yield[yield_mask].max() if yield_mask.any() else pd.NA
+        issuer_screen_yield_mask = bond_yield.notna() & (bond_yield > 0) & eligible_yield_screen_mask
+        max_yield = bond_yield[issuer_screen_yield_mask].max() if issuer_screen_yield_mask.any() else pd.NA
         secured_face = face[group["_IS_SECURED"]].sum()
         secured_pct = secured_face / face_sum * 100 if face_sum > 0 else pd.NA
 
