@@ -1,12 +1,36 @@
-const state = { issuers: [], filteredIssuers: [], filters: {}, metadata: {}, selectedIssuer: null, instrumentMap: new Map(), detailRows: [] };
+const state = {
+  issuers: [],
+  filteredIssuers: [],
+  filters: {},
+  metadata: {},
+  selectedIssuer: null,
+  instrumentMap: new Map(),
+  detailRows: [],
+  rawMoversRows: [],
+  moversRows: [],
+  moversSectorSummary: [],
+};
 
 const loginCard = document.getElementById("loginCard");
 const app = document.getElementById("app");
 const loginForm = document.getElementById("loginForm");
 const loginError = document.getElementById("loginError");
 const logoutButton = document.getElementById("logoutButton");
+const loadingBanner = document.getElementById("loadingBanner");
+const issuerTabButton = document.getElementById("issuerTabButton");
+const moversTabButton = document.getElementById("moversTabButton");
+const issuerTabPanel = document.getElementById("issuerTabPanel");
+const moversTabPanel = document.getElementById("moversTabPanel");
 const issuerHead = document.getElementById("issuerHead");
 const issuerBody = document.getElementById("issuerBody");
+const moversHead = document.getElementById("moversHead");
+const moversBody = document.getElementById("moversBody");
+const moversStatus = document.getElementById("moversStatus");
+const moversChart = document.getElementById("moversChart");
+const moversDirectionFilter = document.getElementById("moversDirectionFilter");
+const moversChartMetric = document.getElementById("moversChartMetric");
+const moversSortField = document.getElementById("moversSortField");
+const moversSortDirection = document.getElementById("moversSortDirection");
 const detailCard = document.getElementById("detailCard");
 const detailTicker = document.getElementById("detailTicker");
 const detailTitle = document.getElementById("detailTitle");
@@ -26,6 +50,12 @@ const sortDirection = document.getElementById("sortDirection");
 const downloadIssuersButton = document.getElementById("downloadIssuersButton");
 const downloadDetailButton = document.getElementById("downloadDetailButton");
 
+function setLoading(isLoading, message = "Loading...") {
+  if (!loadingBanner) return;
+  loadingBanner.classList.toggle("hidden", !isLoading);
+  loadingBanner.textContent = message;
+}
+
 const issuerColumns = [
   "Issuer",
   "Sector",
@@ -41,6 +71,8 @@ const issuerColumns = [
   "3-5Y",
   "Nearest Maturity",
   "# Tranches",
+  "COVERAGE PRIMARY",
+  "COVERAGE SECONDARY",
 ];
 
 const detailColumns = [
@@ -53,6 +85,18 @@ const detailColumns = [
   { key: "PRICE_MOVE_3M", label: "3M Price Move" },
   { key: "YIELD", label: "Yield" },
   { key: "PRICE_RANGE", label: "Price Range" },
+];
+
+const moversColumns = [
+  { key: "Issuer Name", label: "Issuer Name" },
+  { key: "Security Name", label: "Security Name" },
+  { key: "Sector", label: "Sector" },
+  { key: "Rank", label: "Rank" },
+  { key: "Mat", label: "Mat" },
+  { key: "Amount Out ($MM)", label: "Amount Out ($MM)" },
+  { key: "Current Px", label: "Current Px" },
+  { key: "3M Price Move", label: "3M Price Move" },
+  { key: "Price Range", label: "Price Range" },
 ];
 
 function fmt(value, digits = 2) {
@@ -73,6 +117,12 @@ function detailDigits(column) {
   if (column === "AMT_OUTSTANDING_MM") return 0;
   if (["PX_MID", "PRICE_MOVE_3M", "YIELD", "PX_HIGH_52W", "PX_LOW_52W"].includes(column)) return 1;
   if (["OAS", "OAS_DELTA"].includes(column)) return 0;
+  return 2;
+}
+
+function moversDigits(column) {
+  if (column === "Amount Out ($MM)") return 0;
+  if (["Current Px", "3M Price Move"].includes(column)) return 1;
   return 2;
 }
 
@@ -140,9 +190,13 @@ function sortIndicator(column) {
 }
 
 function renderPriceMove(row) {
-  const current = Number(row.PX_MID);
-  const prior = Number(row.PX_MID_T90);
-  if (Number.isNaN(current) || Number.isNaN(prior)) return "-";
+  const currentRaw = row.PX_MID;
+  const priorRaw = row.PX_MID_T90;
+  if (currentRaw === null || currentRaw === undefined || currentRaw === "") return "N/A";
+  if (priorRaw === null || priorRaw === undefined || priorRaw === "") return "N/A";
+  const current = Number(currentRaw);
+  const prior = Number(priorRaw);
+  if (Number.isNaN(current) || Number.isNaN(prior)) return "N/A";
   const move = current - prior;
   const cssClass = move < 0 ? "negative" : move > 0 ? "positive" : "neutral";
   const prefix = move > 0 ? "+" : "";
@@ -165,20 +219,46 @@ function renderPriceRange(row) {
   `;
 }
 
+function renderMoverPriceRange(row) {
+  const low = Number(row.PX_LOW_52W);
+  const high = Number(row.PX_HIGH_52W);
+  const current = Number(row["Current Px"]);
+  if (Number.isNaN(low) || Number.isNaN(high) || Number.isNaN(current) || high <= low) return "-";
+  const clamped = Math.min(Math.max(current, low), high);
+  const pct = ((clamped - low) / (high - low)) * 100;
+  return `
+    <div class="price-range-cell">
+      <span class="range-value low">${fmt(low, 1)}</span>
+      <div class="range-track"><span class="range-dot" style="left:${pct}%"></span></div>
+      <span class="range-value high">${fmt(high, 1)}</span>
+    </div>
+  `;
+}
+
 function renderIssuerTable() {
   const leadingColumns = ["Issuer", "Sector", "Face ($BN)", "WA Price", "WA Yield"];
   const trailingColumns = ["Secured (%)", "Seniority Basis (pts)", "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "# Tranches"];
-  const tableColumnOrder = [...leadingColumns, "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", ...trailingColumns];
+  const tableColumnOrder = [
+    ...leadingColumns,
+    "52W PEAK UPSIDE SECURED ($MM)",
+    "52W PEAK UPSIDE UNSECURED ($MM)",
+    ...trailingColumns,
+    "COVERAGE PRIMARY",
+    "COVERAGE SECONDARY",
+  ];
 
   issuerHead.innerHTML = `
     <tr>
       ${leadingColumns.map((column) => `<th rowspan="2"><button type="button" class="sort-header" data-sort="${column}">${column}${sortIndicator(column)}</button></th>`).join("")}
       <th colspan="2" class="group-header">52W Peak Upside</th>
       ${trailingColumns.map((column) => `<th rowspan="2"><button type="button" class="sort-header" data-sort="${column}">${column}${sortIndicator(column)}</button></th>`).join("")}
+      <th colspan="2" class="group-header">Coverage</th>
     </tr>
     <tr>
       <th><button type="button" class="sort-header" data-sort="52W PEAK UPSIDE SECURED ($MM)">Secured ($MM)${sortIndicator("52W PEAK UPSIDE SECURED ($MM)")}</button></th>
       <th><button type="button" class="sort-header" data-sort="52W PEAK UPSIDE UNSECURED ($MM)">Unsecured ($MM)${sortIndicator("52W PEAK UPSIDE UNSECURED ($MM)")}</button></th>
+      <th><button type="button" class="sort-header" data-sort="COVERAGE PRIMARY">Primary${sortIndicator("COVERAGE PRIMARY")}</button></th>
+      <th><button type="button" class="sort-header" data-sort="COVERAGE SECONDARY">Secondary${sortIndicator("COVERAGE SECONDARY")}</button></th>
     </tr>
   `;
 
@@ -205,7 +285,7 @@ function renderIssuerTable() {
       try {
         await openIssuerDetail(button.dataset.issuer);
       } catch (error) {
-        uploadStatus.textContent = error.message;
+        statusBar.textContent = error.message;
       }
     });
   });
@@ -222,6 +302,119 @@ function renderIssuerTable() {
       applyFilters();
     });
   });
+}
+
+function renderMoversChart() {
+  if (!state.moversSectorSummary.length) {
+    moversChart.innerHTML = `<div class="status-bar">No securities with absolute 3M price move above 10.</div>`;
+    return;
+  }
+  const metric = moversChartMetric.value;
+  const metricKey = metric === "count" ? "Security Count" : "Amount Out ($MM)";
+  const maxValue = Math.max(...state.moversSectorSummary.map((row) => Number(row[metricKey]) || 0), 0);
+  moversChart.innerHTML = state.moversSectorSummary.map((row) => {
+    const value = Number(row[metricKey]) || 0;
+    const widthPct = maxValue > 0 ? (value / maxValue) * 100 : 0;
+    return `
+      <div class="sector-bar-row">
+        <div class="sector-bar-label">${row.Sector || "Unknown"}</div>
+        <div class="sector-bar-track"><div class="sector-bar-fill" style="width:${widthPct}%"></div></div>
+        <div class="sector-bar-value">${fmt(value, 0)}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderMoversTable() {
+  moversHead.innerHTML = `<tr>${moversColumns.map((column) => {
+    if (["Current Px", "3M Price Move"].includes(column.key)) {
+      const marker = moversSortField.value === column.key ? (moversSortDirection.value === "asc" ? " &uarr;" : " &darr;") : "";
+      return `<th><button type="button" class="sort-header mover-sort-header" data-mover-sort="${column.key}">${column.label}${marker}</button></th>`;
+    }
+    return `<th>${column.label}</th>`;
+  }).join("")}</tr>`;
+  moversBody.innerHTML = state.moversRows.map((row) => {
+    const cells = moversColumns.map((column) => {
+      if (column.key === "3M Price Move") {
+        const move = Number(row[column.key]);
+        const cssClass = move < 0 ? "negative" : move > 0 ? "positive" : "neutral";
+        const prefix = move > 0 ? "+" : "";
+        return `<td><span class="price-move ${cssClass}">${prefix}${fmt(move, 1)}</span></td>`;
+      }
+      if (column.key === "Price Range") {
+        return `<td>${renderMoverPriceRange(row)}</td>`;
+      }
+      return `<td>${fmt(row[column.key], moversDigits(column.key))}</td>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+
+  document.querySelectorAll("[data-mover-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const column = button.dataset.moverSort;
+      if (moversSortField.value === column) {
+        moversSortDirection.value = moversSortDirection.value === "asc" ? "desc" : "asc";
+      } else {
+        moversSortField.value = column;
+        moversSortDirection.value = "desc";
+      }
+      applyMoversFilters();
+    });
+  });
+}
+
+function applyMoversFilters() {
+  const direction = moversDirectionFilter.value;
+  const sortBy = moversSortField.value;
+  const ascending = moversSortDirection.value === "asc";
+
+  let rows = [...state.rawMoversRows];
+  rows = rows.filter((row) => {
+    const currentPx = Number(row["Current Px"]);
+    return !Number.isNaN(currentPx) && currentPx <= 105;
+  });
+  if (direction === "down") rows = rows.filter((row) => Number(row["3M Price Move"]) <= -10);
+  if (direction === "up") rows = rows.filter((row) => Number(row["3M Price Move"]) >= 10);
+
+  rows.sort((left, right) => {
+    const a = Number(left[sortBy]);
+    const b = Number(right[sortBy]);
+    const result = (Number.isNaN(a) ? 0 : a) - (Number.isNaN(b) ? 0 : b);
+    return ascending ? result : -result;
+  });
+
+  state.moversRows = rows;
+  const sectorMap = new Map();
+  const sectorCountMap = new Map();
+  rows.forEach((row) => {
+    const sector = row.Sector || "Unknown";
+    const amount = Number(row["Amount Out ($MM)"]) || 0;
+    sectorMap.set(sector, (sectorMap.get(sector) || 0) + amount);
+    sectorCountMap.set(sector, (sectorCountMap.get(sector) || 0) + 1);
+  });
+  state.moversSectorSummary = [...sectorMap.entries()]
+    .map(([Sector, amount]) => ({
+      Sector,
+      "Amount Out ($MM)": amount,
+      "Security Count": sectorCountMap.get(Sector) || 0,
+    }))
+    .sort((a, b) => {
+      const metricKey = moversChartMetric.value === "count" ? "Security Count" : "Amount Out ($MM)";
+      return (b[metricKey] || 0) - (a[metricKey] || 0);
+    });
+
+  const directionLabel = direction === "down" ? "price move down below -10" : direction === "up" ? "price move up above 10" : "absolute 3M price move above 10";
+  moversStatus.textContent = `${state.moversRows.length} securities with ${directionLabel}`;
+  renderMoversChart();
+  renderMoversTable();
+}
+
+function setActiveTab(tabName) {
+  const issuerActive = tabName === "issuer";
+  issuerTabButton.classList.toggle("active", issuerActive);
+  moversTabButton.classList.toggle("active", !issuerActive);
+  issuerTabPanel.classList.toggle("hidden", !issuerActive);
+  moversTabPanel.classList.toggle("hidden", issuerActive);
 }
 
 function applyFilters() {
@@ -312,19 +505,24 @@ async function openIssuerDetail(parentTicker) {
 }
 
 async function loadDashboard() {
-  const payload = await fetchJson("/api/dashboard");
-  state.issuers = payload.issuers;
-  state.filters = payload.filters;
-  state.metadata = payload.metadata;
+  setLoading(true, "Loading...");
+  const [dashboardPayload, moversPayload] = await Promise.all([
+    fetchJson("/api/dashboard"),
+    fetchJson("/api/price-movers"),
+  ]);
+  state.issuers = dashboardPayload.issuers;
+  state.filters = dashboardPayload.filters;
+  state.metadata = dashboardPayload.metadata;
   state.selectedIssuer = null;
   state.instrumentMap = new Map();
   state.detailRows = [];
   detailCard.classList.add("hidden");
   reportSummaryCard.classList.add("hidden");
-
-  sectorFilter.innerHTML = `<option value="All">All</option>${payload.filters.sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join("")}`;
-
+  sectorFilter.innerHTML = `<option value="All">All</option>${dashboardPayload.filters.sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join("")}`;
+  state.rawMoversRows = moversPayload.rows.map((row) => ({ ...row, "Price Range": "" }));
   applyFilters();
+  applyMoversFilters();
+  setLoading(false);
 }
 
 async function checkSession() {
@@ -333,12 +531,19 @@ async function checkSession() {
     loginCard.classList.remove("hidden");
     app.classList.add("hidden");
     logoutButton.classList.add("hidden");
+    setLoading(false);
     return;
   }
   loginCard.classList.add("hidden");
   app.classList.remove("hidden");
   logoutButton.classList.remove("hidden");
-  await loadDashboard();
+  try {
+    await loadDashboard();
+  } catch (error) {
+    setLoading(false);
+    statusBar.textContent = error.message;
+    throw error;
+  }
 }
 
 loginForm.addEventListener("submit", async (event) => {
@@ -349,6 +554,7 @@ loginForm.addEventListener("submit", async (event) => {
     await fetchJson("/login", { method: "POST", body: formData });
     await checkSession();
   } catch (error) {
+    setLoading(false);
     loginError.textContent = error.message;
     loginError.classList.remove("hidden");
   }
@@ -359,9 +565,17 @@ logoutButton.addEventListener("click", async () => {
   window.location.reload();
 });
 
+issuerTabButton.addEventListener("click", () => setActiveTab("issuer"));
+moversTabButton.addEventListener("click", () => setActiveTab("movers"));
+
 [searchInput, sectorFilter, issuerMinYieldInput, sortField, sortDirection].forEach((element) => {
   element.addEventListener("input", applyFilters);
   element.addEventListener("change", applyFilters);
+});
+
+[moversDirectionFilter, moversChartMetric, moversSortField, moversSortDirection].forEach((element) => {
+  element.addEventListener("input", applyMoversFilters);
+  element.addEventListener("change", applyMoversFilters);
 });
 
 clearSearchButton.addEventListener("click", () => {

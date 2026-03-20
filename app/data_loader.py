@@ -153,10 +153,12 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
 
         ranks = group["PAYMENT_RANK"].fillna("").astype(str)
         rank_order = ranks.map(SENIORITY_ORDER).fillna(max_known_rank + 1)
-        valid_rank_order = rank_order[px.notna()]
-        if not valid_rank_order.empty and valid_rank_order.min() != valid_rank_order.max():
-            px_most_senior = px[rank_order == valid_rank_order.min()].median()
-            px_most_junior = px[rank_order == valid_rank_order.max()].median()
+        rank_lower = ranks.str.lower()
+        first_lien_mask = rank_lower.eq("1st lien secured") & px.notna() & (px > 0)
+        senior_unsecured_mask = rank_lower.isin(["sr unsecured", "senior unsecured"]) & px.notna() & (px > 0)
+        if first_lien_mask.any() and senior_unsecured_mask.any():
+            px_most_senior = px[first_lien_mask].median()
+            px_most_junior = px[senior_unsecured_mask].median()
             seniority_gap = px_most_senior - px_most_junior
         else:
             seniority_gap = pd.NA
@@ -371,6 +373,8 @@ def load_workbook(path: Path) -> WorkbookData:
     issuer_display["<1Y"] = issuer_display.apply(lambda r: _wall_label(r.get("WALL_LT1Y_MM"), r.get("WALL_LT1Y_PCT")), axis=1)
     issuer_display["1-3Y"] = issuer_display.apply(lambda r: _wall_label(r.get("WALL_1_3Y_MM"), r.get("WALL_1_3Y_PCT")), axis=1)
     issuer_display["3-5Y"] = issuer_display.apply(lambda r: _wall_label(r.get("WALL_3_5Y_MM"), r.get("WALL_3_5Y_PCT")), axis=1)
+    issuer_display["COVERAGE PRIMARY"] = pd.NA
+    issuer_display["COVERAGE SECONDARY"] = pd.NA
     issuer_display["Adj Unsecured Sprd Movement (bps)"] = pd.NA
     issuer_display["Sprd Movement Label"] = ""
 
@@ -380,6 +384,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "52W PEAK UPSIDE SECURED ($MM)",
         "52W PEAK UPSIDE UNSECURED ($MM)", "Secured (%)", "Seniority Basis (pts)", "Gap Signal",
         "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "OAS Delta (bps)",
+        "COVERAGE PRIMARY", "COVERAGE SECONDARY",
         "Adj Unsecured Sprd Movement (bps)", "Sprd Movement Label", "# Tranches", "Face ($MM)", "Max Yield",
     ]
     issuer_display = issuer_display[[col for col in issuer_columns if col in issuer_display.columns]].sort_values(

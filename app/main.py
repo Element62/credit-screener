@@ -154,6 +154,53 @@ def issuer_detail(parent_ticker: str, _: str = Depends(get_current_user)) -> JSO
     return JSONResponse({"issuer": parent_ticker, "rows": rows, "report": report})
 
 
+@app.get("/api/price-movers")
+def price_movers(_: str = Depends(get_current_user)) -> JSONResponse:
+    dataset = ensure_data_loaded()
+    issuer_name_map = {
+        row.get("PARENT_TICKER"): row.get("Issuer")
+        for row in dataset.issuer_table
+    }
+
+    movers: list[dict] = []
+    for row in dataset.instrument_rows:
+        current_px = pd.to_numeric(row.get("PX_MID"), errors="coerce")
+        prior_px = pd.to_numeric(row.get("PX_MID_T90"), errors="coerce")
+        if pd.isna(current_px) or pd.isna(prior_px):
+            continue
+        move = current_px - prior_px
+        if abs(move) <= 10:
+            continue
+        mover = {
+            "Issuer Name": issuer_name_map.get(row.get("PARENT_TICKER")) or row.get("PARENT_TICKER"),
+            "Security Name": row.get("NAME"),
+            "Sector": row.get("SECTOR"),
+            "Rank": row.get("PAYMENT_RANK"),
+            "Mat": row.get("MATURITY"),
+            "Amount Out ($MM)": row.get("AMT_OUTSTANDING_MM"),
+            "Current Px": current_px,
+            "3M Price Move": round(float(move), 4),
+            "PX_LOW_52W": row.get("PX_LOW_52W"),
+            "PX_HIGH_52W": row.get("PX_HIGH_52W"),
+        }
+        movers.append(mover)
+
+    sector_df = pd.DataFrame(movers)
+    if not sector_df.empty:
+        sector_summary = (
+            sector_df.groupby("Sector", dropna=False)["Amount Out ($MM)"]
+            .sum(min_count=1)
+            .reset_index()
+            .fillna({"Sector": "Unknown"})
+            .sort_values("Amount Out ($MM)", ascending=False, na_position="last")
+        )
+        sector_bars = sector_summary.to_dict(orient="records")
+    else:
+        sector_bars = []
+
+    return JSONResponse({"rows": movers, "sector_summary": sector_bars})
+
+
 @app.post("/api/export/issuers")
 def export_issuers(payload: dict = Body(...), _: str = Depends(get_current_user)) -> StreamingResponse:
     rows = payload.get("rows", [])

@@ -26,6 +26,18 @@
       </section>
 
       <main id="app" class="hidden">
+        <section id="loadingBanner" class="card loading-banner hidden">
+          <div class="loading-text">Loading...</div>
+        </section>
+
+        <section class="card">
+          <div class="tab-strip">
+            <button id="issuerTabButton" type="button" class="tab-button active">Issuer Screen</button>
+            <button id="moversTabButton" type="button" class="tab-button">3M Price Movers</button>
+          </div>
+        </section>
+
+        <div id="issuerTabPanel">
         <section class="card">
           <div class="toolbar">
             <div class="toolbar-group">
@@ -39,7 +51,7 @@
             </div>
             <div class="toolbar-group">
               <label>Min issuer yield (%)<input id="issuerMinYieldInput" type="number" min="0" step="0.1" value="7" /></label>
-              <label>Sort by<select id="sortField"><option value="Face ($BN)">Face ($BN)</option><option value="WA Price">WA Price</option><option value="WA Yield">WA Yield</option><option value="52W PEAK UPSIDE SECURED ($MM)">52W PEAK UPSIDE SECURED ($MM)</option><option value="52W PEAK UPSIDE UNSECURED ($MM)">52W PEAK UPSIDE UNSECURED ($MM)</option></select></label>
+              <label>Sort by<select id="sortField"><option value="Face ($BN)">Face ($BN)</option><option value="WA Price">WA Price</option><option value="WA Yield">WA Yield</option><option value="52W PEAK UPSIDE SECURED ($MM)" selected>52W PEAK UPSIDE SECURED ($MM)</option><option value="52W PEAK UPSIDE UNSECURED ($MM)">52W PEAK UPSIDE UNSECURED ($MM)</option></select></label>
               <label>Order<select id="sortDirection"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
               <button id="downloadIssuersButton" type="button" class="secondary">Download Issuer View</button>
             </div>
@@ -84,6 +96,55 @@
             </table>
           </div>
         </section>
+        </div>
+
+        <div id="moversTabPanel" class="hidden">
+          <section class="card">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">3M Movers</p>
+                <p id="moversStatus" class="status-bar"></p>
+              </div>
+              <div class="toolbar-group">
+                <label>Direction
+                  <select id="moversDirectionFilter">
+                    <option value="all">Absolute Move &gt; 10</option>
+                    <option value="down" selected>Price Move Down</option>
+                    <option value="up">Price Move Up</option>
+                  </select>
+                </label>
+                <label>Chart metric
+                  <select id="moversChartMetric">
+                    <option value="amount">Amount Out ($MM)</option>
+                    <option value="count">Security Count</option>
+                  </select>
+                </label>
+                <label>Sort by
+                  <select id="moversSortField">
+                    <option value="3M Price Move">3M Price Move</option>
+                    <option value="Current Px">Current Px</option>
+                  </select>
+                </label>
+                <label>Order
+                  <select id="moversSortDirection">
+                    <option value="desc">Descending</option>
+                    <option value="asc">Ascending</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div id="moversChart" class="sector-chart"></div>
+          </section>
+
+          <section class="card">
+            <div class="table-wrap">
+              <table>
+                <thead id="moversHead"></thead>
+                <tbody id="moversBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
 
       </main>
     </div>

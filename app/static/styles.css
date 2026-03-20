@@ -103,6 +103,31 @@ button {
 button:hover { transform: translateY(-1px); background: var(--accent-dark); }
 button.secondary { background: rgba(17, 59, 116, 0.08); color: var(--navy); }
 
+.tab-strip {
+  display: flex;
+  gap: 8px;
+}
+
+.tab-button {
+  background: rgba(17, 59, 116, 0.08);
+  color: var(--navy);
+}
+
+.tab-button.active {
+  background: var(--navy);
+  color: #fffaf4;
+}
+
+.loading-banner {
+  padding: 8px 12px;
+}
+
+.loading-text {
+  color: var(--navy);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .status-bar { color: var(--muted); font-size: 0.8rem; }
 .table-wrap { overflow: auto; }
 .issuer-table-wrap { max-height: 420px; }
@@ -245,6 +270,43 @@ tbody tr.selected { background: rgba(11, 127, 90, 0.08); }
 .report-bullets li {
   margin-bottom: 6px;
   line-height: 1.4;
+}
+.sector-chart {
+  display: grid;
+  gap: 8px;
+}
+
+.sector-bar-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(220px, 1fr) 80px;
+  align-items: center;
+  gap: 10px;
+}
+
+.sector-bar-label,
+.sector-bar-value {
+  font-size: 0.76rem;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+.sector-bar-value {
+  text-align: right;
+}
+
+.sector-bar-track {
+  position: relative;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(17, 59, 116, 0.08);
+  overflow: hidden;
+}
+
+.sector-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, var(--accent), var(--navy));
+  border-radius: 999px;
 }
 .error { color: var(--bad); }
 .hidden { display: none !important; }
