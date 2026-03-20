@@ -26,6 +26,7 @@ const issuerBody = document.getElementById("issuerBody");
 const moversHead = document.getElementById("moversHead");
 const moversBody = document.getElementById("moversBody");
 const moversStatus = document.getElementById("moversStatus");
+const moversChartTitle = document.getElementById("moversChartTitle");
 const moversChart = document.getElementById("moversChart");
 const moversDirectionFilter = document.getElementById("moversDirectionFilter");
 const moversChartMetric = document.getElementById("moversChartMetric");
@@ -305,11 +306,13 @@ function renderIssuerTable() {
 }
 
 function renderMoversChart() {
+  const metric = moversChartMetric.value;
+  const metricLabel = metric === "count" ? "Security Count by Sector" : "Amount Outstanding ($MM) by Sector";
+  moversChartTitle.textContent = metricLabel;
   if (!state.moversSectorSummary.length) {
     moversChart.innerHTML = `<div class="status-bar">No securities with absolute 3M price move above 10.</div>`;
     return;
   }
-  const metric = moversChartMetric.value;
   const metricKey = metric === "count" ? "Security Count" : "Amount Out ($MM)";
   const maxValue = Math.max(...state.moversSectorSummary.map((row) => Number(row[metricKey]) || 0), 0);
   moversChart.innerHTML = state.moversSectorSummary.map((row) => {

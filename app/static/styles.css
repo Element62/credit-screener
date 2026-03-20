@@ -276,6 +276,13 @@ tbody tr.selected { background: rgba(11, 127, 90, 0.08); }
   gap: 8px;
 }
 
+.chart-title {
+  margin: 6px 0 0;
+  color: var(--navy);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .sector-bar-row {
   display: grid;
   grid-template-columns: minmax(120px, 180px) minmax(220px, 1fr) 80px;
