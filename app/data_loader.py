@@ -146,7 +146,15 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         eligible_yield_screen_mask = eligible_metric_mask & px.notna() & (px <= 95)
         face_sum = face.sum()
         summary_face = face[normal_mask].sum()
-        criteria_face_mask = normal_mask & face.notna() & (face >= 200_000_000) & bond_yield.notna() & (bond_yield >= 7)
+        criteria_face_mask = (
+            normal_mask
+            & face.notna()
+            & (face >= 200_000_000)
+            & bond_yield.notna()
+            & (bond_yield >= 7)
+            & (maturity > today + pd.DateOffset(years=1))
+            & ~rank_text.str.contains("subordinated")
+        )
         criteria_face_sum = face[criteria_face_mask].sum()
         px_mask = px.notna() & (px > 0) & eligible_metric_mask
         px_face_sum = face[px_mask].sum()
