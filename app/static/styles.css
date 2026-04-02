@@ -108,6 +108,12 @@ button.secondary { background: rgba(17, 59, 116, 0.08); color: var(--navy); }
   gap: 8px;
 }
 
+.subtab-strip {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .tab-button {
   background: rgba(17, 59, 116, 0.08);
   color: var(--navy);
