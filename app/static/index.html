@@ -34,6 +34,7 @@
           <div class="tab-strip">
             <button id="issuerTabButton" type="button" class="tab-button active">Issuer Screen</button>
             <button id="moversTabButton" type="button" class="tab-button">3M Price Movers</button>
+            <button id="exceptionsTabButton" type="button" class="tab-button">Exceptions</button>
           </div>
         </section>
 
@@ -51,7 +52,8 @@
             </div>
             <div class="toolbar-group">
               <label>Min issuer yield (%)<input id="issuerMinYieldInput" type="number" min="0" step="0.1" value="7" /></label>
-              <label>Sort by<select id="sortField"><option value="Face ($BN)">Face ($BN)</option><option value="WA Price">WA Price</option><option value="WA Yield">WA Yield</option><option value="52W PEAK UPSIDE SECURED ($MM)" selected>52W PEAK UPSIDE SECURED ($MM)</option><option value="52W PEAK UPSIDE UNSECURED ($MM)">52W PEAK UPSIDE UNSECURED ($MM)</option></select></label>
+              <label>Min screen face ($BN)<input id="minScreenFaceInput" type="number" min="0" step="0.1" value="0" /></label>
+              <label>Sort by<select id="sortField"><option value="Total Face ($BN)">Total Face ($BN)</option><option value="Face Meets Criteria ($BN)">Face Meets Criteria ($BN)</option><option value="% Face Meets Criteria">% Face Meets Criteria</option><option value="WA Price">WA Price</option><option value="WA Yield">WA Yield</option><option value="52W PEAK UPSIDE SECURED ($MM)" selected>52W PEAK UPSIDE SECURED ($MM)</option><option value="52W PEAK UPSIDE UNSECURED ($MM)">52W PEAK UPSIDE UNSECURED ($MM)</option></select></label>
               <label>Order<select id="sortDirection"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
               <button id="downloadIssuersButton" type="button" class="secondary">Download Issuer View</button>
             </div>
@@ -143,6 +145,70 @@
                 <tbody id="moversBody"></tbody>
               </table>
             </div>
+          </section>
+        </div>
+
+        <div id="exceptionsTabPanel" class="hidden">
+          <section class="card">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">Excluded Securities</p>
+                <p id="abnormalPriceStatus" class="status-bar"></p>
+              </div>
+            </div>
+            <div class="subtab-strip">
+              <button id="abnormalPriceSubtabButton" type="button" class="tab-button active">Abnormal Price</button>
+              <button id="abnormalBbgSubtabButton" type="button" class="tab-button">AbnormalBBG Analytics</button>
+            </div>
+          </section>
+
+          <section id="abnormalPricePanel" class="card">
+            <div class="table-wrap">
+              <table>
+                <thead id="abnormalPriceHead"></thead>
+                <tbody id="abnormalPriceBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="abnormalBbgPanel" class="card hidden">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">Heuristic Checks</p>
+                <p class="status-bar">Reference logic for identifying potentially abnormal Bloomberg analytics.</p>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Check</th>
+                  <th>Heuristic</th>
+                  <th>Flag Condition</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Approx Flat Yield</td>
+                  <td>(100 - Current PX) / Time to Maturity + Coupon = Approx Flat Yield</td>
+                  <td>Flag if `|Approx - BBG| / BBG &gt; 25%`</td>
+                </tr>
+                <tr>
+                  <td>Approx Spread</td>
+                  <td>Approx Flat Yield - Time to Maturity Interpolated Treasury/Swap = Approx Spread</td>
+                  <td>Flag if Approx Spread differs from BBG Spread by `100 bps` or more</td>
+                </tr>
+                <tr>
+                  <td>Approx WAL</td>
+                  <td>Compare Bloomberg WAL against Time to Maturity</td>
+                  <td>Flag if BBG WAL is greater than Time to Maturity</td>
+                </tr>
+                <tr>
+                  <td>Coupon vs Current Yield</td>
+                  <td>Cross-check coupon level against current yield for directional consistency</td>
+                  <td>Flag when coupon and current yield relationship looks inconsistent</td>
+                </tr>
+              </tbody>
+            </table>
           </section>
         </div>
 

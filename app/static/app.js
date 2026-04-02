@@ -9,6 +9,7 @@ const state = {
   rawMoversRows: [],
   moversRows: [],
   moversSectorSummary: [],
+  abnormalPriceRows: [],
 };
 
 const loginCard = document.getElementById("loginCard");
@@ -19,8 +20,10 @@ const logoutButton = document.getElementById("logoutButton");
 const loadingBanner = document.getElementById("loadingBanner");
 const issuerTabButton = document.getElementById("issuerTabButton");
 const moversTabButton = document.getElementById("moversTabButton");
+const exceptionsTabButton = document.getElementById("exceptionsTabButton");
 const issuerTabPanel = document.getElementById("issuerTabPanel");
 const moversTabPanel = document.getElementById("moversTabPanel");
+const exceptionsTabPanel = document.getElementById("exceptionsTabPanel");
 const issuerHead = document.getElementById("issuerHead");
 const issuerBody = document.getElementById("issuerBody");
 const moversHead = document.getElementById("moversHead");
@@ -32,6 +35,13 @@ const moversDirectionFilter = document.getElementById("moversDirectionFilter");
 const moversChartMetric = document.getElementById("moversChartMetric");
 const moversSortField = document.getElementById("moversSortField");
 const moversSortDirection = document.getElementById("moversSortDirection");
+const abnormalPriceSubtabButton = document.getElementById("abnormalPriceSubtabButton");
+const abnormalBbgSubtabButton = document.getElementById("abnormalBbgSubtabButton");
+const abnormalPricePanel = document.getElementById("abnormalPricePanel");
+const abnormalBbgPanel = document.getElementById("abnormalBbgPanel");
+const abnormalPriceHead = document.getElementById("abnormalPriceHead");
+const abnormalPriceBody = document.getElementById("abnormalPriceBody");
+const abnormalPriceStatus = document.getElementById("abnormalPriceStatus");
 const detailCard = document.getElementById("detailCard");
 const detailTicker = document.getElementById("detailTicker");
 const detailTitle = document.getElementById("detailTitle");
@@ -45,6 +55,7 @@ const searchInput = document.getElementById("searchInput");
 const clearSearchButton = document.getElementById("clearSearchButton");
 const sectorFilter = document.getElementById("sectorFilter");
 const issuerMinYieldInput = document.getElementById("issuerMinYieldInput");
+const minScreenFaceInput = document.getElementById("minScreenFaceInput");
 const sortField = document.getElementById("sortField");
 const sortDirection = document.getElementById("sortDirection");
 const downloadIssuersButton = document.getElementById("downloadIssuersButton");
@@ -81,6 +92,7 @@ const detailColumns = [
   { key: "PAYMENT_RANK", label: "Rank" },
   { key: "MATURITY", label: "Mat" },
   { key: "AMT_OUTSTANDING_MM", label: "Amt Out ($MM)" },
+  { key: "LAST_30D_VOLUME_MM", label: "Last 30 Days Volume ($MM)" },
   { key: "PX_MID", label: "Current PX" },
   { key: "PRICE_MOVE_3M", label: "3M Price Move" },
   { key: "YIELD", label: "Yield" },
@@ -99,6 +111,21 @@ const moversColumns = [
   { key: "Price Range", label: "Price Range" },
 ];
 
+const abnormalPriceColumns = [
+  { key: "Issuer", label: "Issuer" },
+  { key: "Security", label: "Security" },
+  { key: "Sector", label: "Sector" },
+  { key: "Rank", label: "Rank" },
+  { key: "Mat", label: "Mat" },
+  { key: "Amount Out ($MM)", label: "Amount Out ($MM)" },
+  { key: "Current Px", label: "Current Px" },
+  { key: "Prior Px", label: "Prior Px" },
+  { key: "3M Price Move", label: "3M Price Move" },
+  { key: "Yield", label: "Yield" },
+  { key: "52W Low", label: "52W Low" },
+  { key: "52W High", label: "52W High" },
+];
+
 function fmt(value, digits = 2) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "number") {
@@ -108,7 +135,7 @@ function fmt(value, digits = 2) {
 }
 
 function issuerDigits(column) {
-  if (["Face ($BN)", "WA Price", "WA Yield", "Secured (%)"].includes(column)) return 1;
+  if (["Total Face ($BN)", "Face Meets Criteria ($BN)", "WA Price", "WA Yield", "Secured (%)", "% Face Meets Criteria"].includes(column)) return 1;
   if (["52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "OAS Delta (bps)", "# Tranches"].includes(column)) return 0;
   return 2;
 }
@@ -123,6 +150,12 @@ function detailDigits(column) {
 function moversDigits(column) {
   if (column === "Amount Out ($MM)") return 0;
   if (["Current Px", "3M Price Move"].includes(column)) return 1;
+  return 2;
+}
+
+function abnormalPriceDigits(column) {
+  if (column === "Amount Out ($MM)") return 0;
+  if (["Current Px", "Prior Px", "3M Price Move", "Yield", "52W Low", "52W High"].includes(column)) return 1;
   return 2;
 }
 
@@ -236,7 +269,7 @@ function renderMoverPriceRange(row) {
 }
 
 function renderIssuerTable() {
-  const leadingColumns = ["Issuer", "Sector", "Face ($BN)", "WA Price", "WA Yield"];
+  const leadingColumns = ["Issuer", "Sector", "Total Face ($BN)", "Face Meets Criteria ($BN)", "% Face Meets Criteria", "WA Price", "WA Yield"];
   const trailingColumns = ["Secured (%)", "Seniority Basis (pts)", "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "# Tranches"];
   const tableColumnOrder = [
     ...leadingColumns,
@@ -365,6 +398,32 @@ function renderMoversTable() {
   });
 }
 
+function renderAbnormalPriceTable() {
+  abnormalPriceHead.innerHTML = `<tr>${abnormalPriceColumns.map((column) => `<th>${column.label}</th>`).join("")}</tr>`;
+  abnormalPriceBody.innerHTML = state.abnormalPriceRows.map((row) => {
+    const cells = abnormalPriceColumns.map((column) => {
+      if (column.key === "3M Price Move") {
+        const move = Number(row[column.key]);
+        if (Number.isNaN(move)) return "<td>-</td>";
+        const cssClass = move < 0 ? "negative" : move > 0 ? "positive" : "neutral";
+        const prefix = move > 0 ? "+" : "";
+        return `<td><span class="price-move ${cssClass}">${prefix}${fmt(move, 1)}</span></td>`;
+      }
+      return `<td>${fmt(row[column.key], abnormalPriceDigits(column.key))}</td>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+  abnormalPriceStatus.textContent = `${state.abnormalPriceRows.length} securities with current price above 120 excluded from issuer weighted averages`;
+}
+
+function setExceptionsSubtab(tabName) {
+  const abnormalPriceActive = tabName === "abnormal-price";
+  abnormalPriceSubtabButton.classList.toggle("active", abnormalPriceActive);
+  abnormalBbgSubtabButton.classList.toggle("active", !abnormalPriceActive);
+  abnormalPricePanel.classList.toggle("hidden", !abnormalPriceActive);
+  abnormalBbgPanel.classList.toggle("hidden", abnormalPriceActive);
+}
+
 function applyMoversFilters() {
   const direction = moversDirectionFilter.value;
   const sortBy = moversSortField.value;
@@ -413,16 +472,21 @@ function applyMoversFilters() {
 
 function setActiveTab(tabName) {
   const issuerActive = tabName === "issuer";
+  const moversActive = tabName === "movers";
+  const exceptionsActive = tabName === "exceptions";
   issuerTabButton.classList.toggle("active", issuerActive);
-  moversTabButton.classList.toggle("active", !issuerActive);
+  moversTabButton.classList.toggle("active", moversActive);
+  exceptionsTabButton.classList.toggle("active", exceptionsActive);
   issuerTabPanel.classList.toggle("hidden", !issuerActive);
-  moversTabPanel.classList.toggle("hidden", issuerActive);
+  moversTabPanel.classList.toggle("hidden", !moversActive);
+  exceptionsTabPanel.classList.toggle("hidden", !exceptionsActive);
 }
 
 function applyFilters() {
   const search = searchInput.value.trim().toLowerCase();
   const sector = sectorFilter.value;
   const minIssuerYield = Number(issuerMinYieldInput.value || 0);
+  const minScreenFace = Number(minScreenFaceInput.value || 0);
   const sortBy = sortField.value;
   const ascending = sortDirection.value === "asc";
 
@@ -431,6 +495,12 @@ function applyFilters() {
     const maxYield = Number(row["Max Yield"]);
     return !Number.isNaN(maxYield) && maxYield >= minIssuerYield;
   });
+  if (minScreenFace > 0) {
+    rows = rows.filter((row) => {
+      const screenFace = Number(row["Face Meets Criteria ($BN)"]);
+      return !Number.isNaN(screenFace) && screenFace >= minScreenFace;
+    });
+  }
   if (sector !== "All") rows = rows.filter((row) => row.Sector === sector);
   if (search) {
     rows = rows.filter((row) =>
@@ -516,9 +586,10 @@ async function openIssuerDetail(parentTicker) {
 
 async function loadDashboard() {
   setLoading(true, "Loading...");
-  const [dashboardPayload, moversPayload] = await Promise.all([
+  const [dashboardPayload, moversPayload, abnormalPricesPayload] = await Promise.all([
     fetchJson("/api/dashboard"),
     fetchJson("/api/price-movers"),
+    fetchJson("/api/abnormal-prices"),
   ]);
   state.issuers = dashboardPayload.issuers;
   state.filters = dashboardPayload.filters;
@@ -530,8 +601,23 @@ async function loadDashboard() {
   reportSummaryCard.classList.add("hidden");
   sectorFilter.innerHTML = `<option value="All">All</option>${dashboardPayload.filters.sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join("")}`;
   state.rawMoversRows = moversPayload.rows.map((row) => ({ ...row, "Price Range": "" }));
+  state.abnormalPriceRows = abnormalPricesPayload.rows.map((row) => ({
+    Issuer: row.Issuer,
+    Security: row.NAME,
+    Sector: row.SECTOR,
+    Rank: row.PAYMENT_RANK,
+    Mat: row.MATURITY,
+    "Amount Out ($MM)": row.AMT_OUTSTANDING_MM,
+    "Current Px": row.PX_MID,
+    "Prior Px": row.PX_MID_T90,
+    "3M Price Move": row.PRICE_MOVE_3M,
+    Yield: row.YIELD,
+    "52W Low": row.PX_LOW_52W,
+    "52W High": row.PX_HIGH_52W,
+  }));
   applyFilters();
   applyMoversFilters();
+  renderAbnormalPriceTable();
   setLoading(false);
 }
 
@@ -577,8 +663,14 @@ logoutButton.addEventListener("click", async () => {
 
 issuerTabButton.addEventListener("click", () => setActiveTab("issuer"));
 moversTabButton.addEventListener("click", () => setActiveTab("movers"));
+exceptionsTabButton.addEventListener("click", () => setActiveTab("exceptions"));
+abnormalPriceSubtabButton.addEventListener("click", () => {
+  setExceptionsSubtab("abnormal-price");
+  renderAbnormalPriceTable();
+});
+abnormalBbgSubtabButton.addEventListener("click", () => setExceptionsSubtab("abnormal-bbg"));
 
-[searchInput, sectorFilter, issuerMinYieldInput, sortField, sortDirection].forEach((element) => {
+[searchInput, sectorFilter, issuerMinYieldInput, minScreenFaceInput, sortField, sortDirection].forEach((element) => {
   element.addEventListener("input", applyFilters);
   element.addEventListener("change", applyFilters);
 });

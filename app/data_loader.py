@@ -25,6 +25,7 @@ SENIORITY_ORDER = {
 class WorkbookData:
     issuer_table: list[dict]
     instrument_rows: list[dict]
+    abnormal_price_rows: list[dict]
     filters: dict
     metadata: dict
 
@@ -139,9 +140,14 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         bond_yield = pd.to_numeric(group["YIELD"], errors="coerce") if "YIELD" in group.columns else pd.Series(index=group.index, dtype="float64")
         maturity = pd.to_datetime(group["MATURITY"], errors="coerce")
         rank_text = group["PAYMENT_RANK"].fillna("").astype(str).str.lower()
-        eligible_metric_mask = face.notna() & (face >= 200_000_000) & (maturity > today + pd.DateOffset(years=1)) & ~rank_text.str.contains("subordinated")
+        abnormal_price_mask = px > 120
+        normal_mask = ~abnormal_price_mask
+        eligible_metric_mask = face.notna() & (face >= 200_000_000) & (maturity > today + pd.DateOffset(years=1)) & ~rank_text.str.contains("subordinated") & normal_mask
         eligible_yield_screen_mask = eligible_metric_mask & px.notna() & (px <= 95)
         face_sum = face.sum()
+        summary_face = face[normal_mask].sum()
+        criteria_face_mask = normal_mask & face.notna() & (face >= 200_000_000) & bond_yield.notna() & (bond_yield >= 7)
+        criteria_face_sum = face[criteria_face_mask].sum()
         px_mask = px.notna() & (px > 0) & eligible_metric_mask
         px_face_sum = face[px_mask].sum()
         wtavg_px = (px[px_mask] * face[px_mask]).sum() / px_face_sum if px_face_sum > 0 else pd.NA
@@ -150,14 +156,14 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         wtavg_yield = (bond_yield[yield_mask] * face[yield_mask]).sum() / yield_face_sum if yield_face_sum > 0 else pd.NA
         issuer_screen_yield_mask = bond_yield.notna() & (bond_yield > 0) & eligible_yield_screen_mask
         max_yield = bond_yield[issuer_screen_yield_mask].max() if issuer_screen_yield_mask.any() else pd.NA
-        secured_face = face[group["_IS_SECURED"]].sum()
-        secured_pct = secured_face / face_sum * 100 if face_sum > 0 else pd.NA
+        secured_face = face[group["_IS_SECURED"] & normal_mask].sum()
+        secured_pct = secured_face / summary_face * 100 if summary_face > 0 else pd.NA
 
         ranks = group["PAYMENT_RANK"].fillna("").astype(str)
         rank_order = ranks.map(SENIORITY_ORDER).fillna(max_known_rank + 1)
         rank_lower = ranks.str.lower()
-        first_lien_mask = rank_lower.eq("1st lien secured") & px.notna() & (px > 0)
-        senior_unsecured_mask = rank_lower.isin(["sr unsecured", "senior unsecured"]) & px.notna() & (px > 0)
+        first_lien_mask = rank_lower.eq("1st lien secured") & px.notna() & (px > 0) & normal_mask
+        senior_unsecured_mask = rank_lower.isin(["sr unsecured", "senior unsecured"]) & px.notna() & (px > 0) & normal_mask
         if first_lien_mask.any() and senior_unsecured_mask.any():
             px_most_senior = px[first_lien_mask].median()
             px_most_junior = px[senior_unsecured_mask].median()
@@ -174,19 +180,21 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         wall_lt1y_mm, wall_lt1y_pct = wall(today, today + pd.DateOffset(years=1))
         wall_1_3y_mm, wall_1_3y_pct = wall(today + pd.DateOffset(years=1), today + pd.DateOffset(years=3))
         wall_3_5y_mm, wall_3_5y_pct = wall(today + pd.DateOffset(years=3), today + pd.DateOffset(years=5))
-        issuer_oas_delta = (pd.to_numeric(group["OAS_DELTA"], errors="coerce") * face).sum() / face_sum if face_sum > 0 else pd.NA
+        issuer_oas_delta = (pd.to_numeric(group["OAS_DELTA"], errors="coerce")[normal_mask] * face[normal_mask]).sum() / summary_face if summary_face > 0 else pd.NA
 
         return pd.Series(
             {
                 "ISSUER_FACE_MM": face_sum / 1e6,
+                "ISSUER_SCREEN_FACE_MM": criteria_face_sum / 1e6,
+                "ISSUER_SCREEN_FACE_PCT": (criteria_face_sum / face_sum * 100) if face_sum > 0 else pd.NA,
                 "ISSUER_WTAVG_PX": wtavg_px,
                 "ISSUER_WTAVG_YIELD": wtavg_yield,
                 "ISSUER_MAX_YIELD": max_yield,
                 "ISSUER_DIST_TO_PAR": 100.0 - wtavg_px if pd.notna(wtavg_px) else pd.NA,
-                "ISSUER_DISLOCATION_MM": group["DISLOCATION_MM"].sum(),
-                "ISSUER_DISLOCATION_52W_MM": group["DISLOCATION_52W_MM"].sum(),
-                "ISSUER_DISLOCATION_52W_SEC_MM": group.loc[group["_IS_SECURED"], "DISLOCATION_52W_MM"].sum(),
-                "ISSUER_DISLOCATION_52W_UNSEC_MM": group.loc[~group["_IS_SECURED"], "DISLOCATION_52W_MM"].sum(),
+                "ISSUER_DISLOCATION_MM": group.loc[normal_mask, "DISLOCATION_MM"].sum(),
+                "ISSUER_DISLOCATION_52W_MM": group.loc[normal_mask, "DISLOCATION_52W_MM"].sum(),
+                "ISSUER_DISLOCATION_52W_SEC_MM": group.loc[group["_IS_SECURED"] & normal_mask, "DISLOCATION_52W_MM"].sum(),
+                "ISSUER_DISLOCATION_52W_UNSEC_MM": group.loc[~group["_IS_SECURED"] & normal_mask, "DISLOCATION_52W_MM"].sum(),
                 "SECURED_PCT": secured_pct,
                 "SENIORITY_GAP": seniority_gap,
                 "GAP_SIGNAL": _gap_label(seniority_gap),
@@ -331,9 +339,10 @@ def load_workbook(path: Path) -> WorkbookData:
     df["_IS_SECURED"] = df["PAYMENT_RANK"].apply(_is_secured)
 
     issuer_agg = _issuer_metrics(df, anchor_date) if anchor_date else pd.DataFrame(columns=["PARENT_TICKER"])
+    summary_df = df[~(pd.to_numeric(df["PX_MID"], errors="coerce") > 120)].copy()
     tranche_count = df.groupby("PARENT_TICKER", dropna=False)["ID"].count().rename("# Tranches").reset_index()
     if anchor_date:
-        with_mat = df.assign(MAT_DT=pd.to_datetime(df["MATURITY"], errors="coerce"))
+        with_mat = summary_df.assign(MAT_DT=pd.to_datetime(summary_df["MATURITY"], errors="coerce"))
         nearest_mat = (
             with_mat[with_mat["MAT_DT"] >= pd.Timestamp(anchor_date)]
             .groupby("PARENT_TICKER", dropna=False)["MAT_DT"]
@@ -352,7 +361,9 @@ def load_workbook(path: Path) -> WorkbookData:
         .rename(
             columns={
                 "SECTOR": "Sector",
-                "ISSUER_FACE_MM": "Face ($MM)",
+                "ISSUER_FACE_MM": "Total Face ($MM)",
+                "ISSUER_SCREEN_FACE_MM": "Face Meets Criteria ($MM)",
+                "ISSUER_SCREEN_FACE_PCT": "% Face Meets Criteria",
                 "ISSUER_WTAVG_PX": "WA Price",
                 "ISSUER_WTAVG_YIELD": "WA Yield",
                 "ISSUER_MAX_YIELD": "Max Yield",
@@ -371,7 +382,8 @@ def load_workbook(path: Path) -> WorkbookData:
         issuer_display["Issuer"] = issuer_display["ISSUER_NAME"].fillna(issuer_display["PARENT_TICKER"])
     else:
         issuer_display["Issuer"] = issuer_display["PARENT_TICKER"]
-    issuer_display["Face ($BN)"] = issuer_display["Face ($MM)"] / 1000.0
+    issuer_display["Total Face ($BN)"] = issuer_display["Total Face ($MM)"] / 1000.0
+    issuer_display["Face Meets Criteria ($BN)"] = issuer_display["Face Meets Criteria ($MM)"] / 1000.0
     issuer_display["<1Y"] = issuer_display.apply(lambda r: _wall_label(r.get("WALL_LT1Y_MM"), r.get("WALL_LT1Y_PCT")), axis=1)
     issuer_display["1-3Y"] = issuer_display.apply(lambda r: _wall_label(r.get("WALL_1_3Y_MM"), r.get("WALL_1_3Y_PCT")), axis=1)
     issuer_display["3-5Y"] = issuer_display.apply(lambda r: _wall_label(r.get("WALL_3_5Y_MM"), r.get("WALL_3_5Y_PCT")), axis=1)
@@ -382,15 +394,15 @@ def load_workbook(path: Path) -> WorkbookData:
 
     issuer_columns = [
         "PARENT_TICKER",
-        "Issuer", "Sector", "Face ($BN)", "WA Price", "WA Yield",
+        "Issuer", "Sector", "Total Face ($BN)", "Face Meets Criteria ($BN)", "% Face Meets Criteria", "WA Price", "WA Yield",
         "52W PEAK UPSIDE SECURED ($MM)",
         "52W PEAK UPSIDE UNSECURED ($MM)", "Secured (%)", "Seniority Basis (pts)", "Gap Signal",
         "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "OAS Delta (bps)",
         "COVERAGE PRIMARY", "COVERAGE SECONDARY",
-        "Adj Unsecured Sprd Movement (bps)", "Sprd Movement Label", "# Tranches", "Face ($MM)", "Max Yield",
+        "Adj Unsecured Sprd Movement (bps)", "Sprd Movement Label", "# Tranches", "Total Face ($MM)", "Face Meets Criteria ($MM)", "Max Yield",
     ]
     issuer_display = issuer_display[[col for col in issuer_columns if col in issuer_display.columns]].sort_values(
-        by=["Face ($MM)", "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)"],
+        by=["Total Face ($MM)", "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)"],
         ascending=[False, False, False],
         na_position="last"
     )
@@ -401,9 +413,27 @@ def load_workbook(path: Path) -> WorkbookData:
         "PX_LOW_52W", "DATE_OF_LOW", "DISLOCATION_52W_MM", "OAS", "OAS_T90", "OAS_DELTA",
         "DISTRESS_TIER", "SECTOR", "COUNTRY", "CPN_TYPE", "CPN_VALUE",
     ]
-    instruments = df[[col for col in instrument_columns if col in df.columns]].copy()
+    instruments = summary_df[[col for col in instrument_columns if col in summary_df.columns]].copy()
     instruments["AMT_OUTSTANDING_MM"] = pd.to_numeric(instruments["AMT_OUTSTANDING"], errors="coerce") / 1e6
     instruments = instruments.sort_values(by=["PARENT_TICKER", "DISLOCATION_MM"], ascending=[True, False], na_position="last")
+
+    abnormal_prices = df[pd.to_numeric(df["PX_MID"], errors="coerce") > 120].copy()
+    if "ISSUER_NAME" in abnormal_prices.columns:
+        abnormal_prices["Issuer"] = abnormal_prices["ISSUER_NAME"].fillna(abnormal_prices["PARENT_TICKER"])
+    else:
+        abnormal_prices["Issuer"] = abnormal_prices["PARENT_TICKER"]
+    abnormal_prices["AMT_OUTSTANDING_MM"] = pd.to_numeric(abnormal_prices["AMT_OUTSTANDING"], errors="coerce") / 1e6
+    abnormal_prices["PRICE_MOVE_3M"] = pd.to_numeric(abnormal_prices["PX_MID"], errors="coerce") - pd.to_numeric(abnormal_prices["PX_MID_T90"], errors="coerce")
+    abnormal_price_columns = [
+        "Issuer", "PARENT_TICKER", "ID", "NAME", "SECTOR", "PAYMENT_RANK", "MATURITY",
+        "AMT_OUTSTANDING_MM", "PX_MID", "PX_MID_T90", "PRICE_MOVE_3M", "YIELD", "YIELD_T90",
+        "PX_LOW_52W", "PX_HIGH_52W", "COUNTRY", "CPN_TYPE", "CPN_VALUE",
+    ]
+    abnormal_prices = abnormal_prices[[col for col in abnormal_price_columns if col in abnormal_prices.columns]].sort_values(
+        by=["PX_MID", "AMT_OUTSTANDING_MM"],
+        ascending=[False, False],
+        na_position="last",
+    )
 
     filters = {
         "sectors": sorted([s for s in issuer_display["Sector"].dropna().astype(str).unique().tolist() if s and s != "Unknown"]),
@@ -420,6 +450,7 @@ def load_workbook(path: Path) -> WorkbookData:
     return WorkbookData(
         issuer_table=_records_from_df(issuer_display),
         instrument_rows=_records_from_df(instruments),
+        abnormal_price_rows=_records_from_df(abnormal_prices),
         filters=filters,
         metadata=metadata,
     )

@@ -201,6 +201,12 @@ def price_movers(_: str = Depends(get_current_user)) -> JSONResponse:
     return JSONResponse({"rows": movers, "sector_summary": sector_bars})
 
 
+@app.get("/api/abnormal-prices")
+def abnormal_prices(_: str = Depends(get_current_user)) -> JSONResponse:
+    dataset = ensure_data_loaded()
+    return JSONResponse({"rows": dataset.abnormal_price_rows})
+
+
 @app.post("/api/export/issuers")
 def export_issuers(payload: dict = Body(...), _: str = Depends(get_current_user)) -> StreamingResponse:
     rows = payload.get("rows", [])
