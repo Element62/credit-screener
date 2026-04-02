@@ -70,7 +70,9 @@ function setLoading(isLoading, message = "Loading...") {
 const issuerColumns = [
   "Issuer",
   "Sector",
-  "Face ($BN)",
+  "Total Face ($BN)",
+  "Face Meets Criteria ($BN)",
+  "% Face Meets Criteria",
   "WA Price",
   "WA Yield",
   "52W PEAK UPSIDE SECURED ($MM)",
