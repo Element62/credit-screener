@@ -10,6 +10,11 @@ const state = {
   moversRows: [],
   moversSectorSummary: [],
   abnormalPriceRows: [],
+  excludedRows: [],
+  upsideMode: "52w",
+  moveMode: "3m",
+  sortField: "52W PEAK UPSIDE SECURED ($MM)",
+  sortDirection: "desc",
 };
 
 const loginCard = document.getElementById("loginCard");
@@ -24,6 +29,8 @@ const exceptionsTabButton = document.getElementById("exceptionsTabButton");
 const issuerTabPanel = document.getElementById("issuerTabPanel");
 const moversTabPanel = document.getElementById("moversTabPanel");
 const exceptionsTabPanel = document.getElementById("exceptionsTabPanel");
+const documentationTabButton = document.getElementById("documentationTabButton");
+const documentationTabPanel = document.getElementById("documentationTabPanel");
 const issuerHead = document.getElementById("issuerHead");
 const issuerBody = document.getElementById("issuerBody");
 const moversHead = document.getElementById("moversHead");
@@ -37,16 +44,24 @@ const moversSortField = document.getElementById("moversSortField");
 const moversSortDirection = document.getElementById("moversSortDirection");
 const abnormalPriceSubtabButton = document.getElementById("abnormalPriceSubtabButton");
 const abnormalBbgSubtabButton = document.getElementById("abnormalBbgSubtabButton");
+const exclusionsSubtabButton = document.getElementById("exclusionsSubtabButton");
 const abnormalPricePanel = document.getElementById("abnormalPricePanel");
 const abnormalBbgPanel = document.getElementById("abnormalBbgPanel");
+const exclusionsPanel = document.getElementById("exclusionsPanel");
 const abnormalPriceHead = document.getElementById("abnormalPriceHead");
 const abnormalPriceBody = document.getElementById("abnormalPriceBody");
 const abnormalPriceStatus = document.getElementById("abnormalPriceStatus");
+const exclusionsHead = document.getElementById("exclusionsHead");
+const exclusionsBody = document.getElementById("exclusionsBody");
+const exclusionsStatus = document.getElementById("exclusionsStatus");
 const detailCard = document.getElementById("detailCard");
 const detailTicker = document.getElementById("detailTicker");
 const detailTitle = document.getElementById("detailTitle");
 const detailHead = document.getElementById("detailHead");
 const detailBody = document.getElementById("detailBody");
+const defaultedCard = document.getElementById("defaultedCard");
+const defaultedHead = document.getElementById("defaultedHead");
+const defaultedBody = document.getElementById("defaultedBody");
 const reportSummaryCard = document.getElementById("reportSummaryCard");
 const reportMeta = document.getElementById("reportMeta");
 const reportBullets = document.getElementById("reportBullets");
@@ -54,10 +69,6 @@ const statusBar = document.getElementById("statusBar");
 const searchInput = document.getElementById("searchInput");
 const clearSearchButton = document.getElementById("clearSearchButton");
 const sectorFilter = document.getElementById("sectorFilter");
-const issuerMinYieldInput = document.getElementById("issuerMinYieldInput");
-const minScreenFaceInput = document.getElementById("minScreenFaceInput");
-const sortField = document.getElementById("sortField");
-const sortDirection = document.getElementById("sortDirection");
 const downloadIssuersButton = document.getElementById("downloadIssuersButton");
 const downloadDetailButton = document.getElementById("downloadDetailButton");
 
@@ -70,34 +81,32 @@ function setLoading(isLoading, message = "Loading...") {
 const issuerColumns = [
   "Issuer",
   "Sector",
-  "Total Face ($BN)",
-  "Face Meets Criteria ($BN)",
-  "% Face Meets Criteria",
-  "WA Price",
-  "WA Yield",
+  "Secured Face ($BN)",
+  "Unsecured Face ($BN)",
+  "Preferred Face ($BN)",
+  "Price",
+  "Yield",
+  "3M Price Move",
+  "7D Price Move",
   "52W PEAK UPSIDE SECURED ($MM)",
   "52W PEAK UPSIDE UNSECURED ($MM)",
-  "Secured (%)",
-  "Seniority Basis (pts)",
-  "<1Y",
-  "1-3Y",
-  "3-5Y",
-  "Nearest Maturity",
-  "# Tranches",
+  "52W PEAK UPSIDE PREFERRED ($MM)",
+  "RETURN TO PAR SECURED ($MM)",
+  "RETURN TO PAR UNSECURED ($MM)",
+  "RETURN TO PAR PREFERRED ($MM)",
   "COVERAGE PRIMARY",
   "COVERAGE SECONDARY",
 ];
 
 const detailColumns = [
-  { key: "ID", label: "ID" },
   { key: "NAME", label: "Name" },
-  { key: "PAYMENT_RANK", label: "Rank" },
-  { key: "MATURITY", label: "Mat" },
+  { key: "PAYMENT_RANK", label: "Lien" },
   { key: "AMT_OUTSTANDING_MM", label: "Amt Out ($MM)" },
-  { key: "LAST_30D_VOLUME_MM", label: "Last 30 Days Volume ($MM)" },
   { key: "PX_MID", label: "Current PX" },
+  { key: "PRICE_MOVE_7D", label: "7D Price Move" },
   { key: "PRICE_MOVE_3M", label: "3M Price Move" },
   { key: "YIELD", label: "Yield" },
+  { key: "LAST_30D_VOLUME_MM", label: "Last Month Traded Volume ($MM)" },
   { key: "PRICE_RANGE", label: "Price Range" },
 ];
 
@@ -105,11 +114,10 @@ const moversColumns = [
   { key: "Issuer Name", label: "Issuer Name" },
   { key: "Security Name", label: "Security Name" },
   { key: "Sector", label: "Sector" },
-  { key: "Rank", label: "Rank" },
-  { key: "Mat", label: "Mat" },
+  { key: "Lien", label: "Lien" },
   { key: "Amount Out ($MM)", label: "Amount Out ($MM)" },
   { key: "Current Px", label: "Current Px" },
-  { key: "3M Price Move", label: "3M Price Move" },
+  { key: "ACTIVE_MOVE", label: "Price Move" },
   { key: "Price Range", label: "Price Range" },
 ];
 
@@ -136,22 +144,33 @@ function fmt(value, digits = 2) {
   return value;
 }
 
+const zeroAsDashColumns = new Set([
+  "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
+  "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)",
+  "RETURN TO PAR SECURED ($MM)", "RETURN TO PAR UNSECURED ($MM)", "RETURN TO PAR PREFERRED ($MM)",
+]);
+
+function fmtIssuer(column, value) {
+  if (zeroAsDashColumns.has(column) && (value === 0 || value === null || value === undefined)) return "-";
+  return fmt(value, issuerDigits(column));
+}
+
 function issuerDigits(column) {
-  if (["Total Face ($BN)", "Face Meets Criteria ($BN)", "WA Price", "WA Yield", "Secured (%)", "% Face Meets Criteria"].includes(column)) return 1;
-  if (["52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "OAS Delta (bps)", "# Tranches"].includes(column)) return 0;
+  if (["Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)", "Price", "Yield", "3M Price Move", "7D Price Move"].includes(column)) return 1;
+  if (["52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)", "RETURN TO PAR SECURED ($MM)", "RETURN TO PAR UNSECURED ($MM)", "RETURN TO PAR PREFERRED ($MM)", "OAS Delta (bps)"].includes(column)) return 0;
   return 2;
 }
 
 function detailDigits(column) {
   if (column === "AMT_OUTSTANDING_MM") return 0;
-  if (["PX_MID", "PRICE_MOVE_3M", "YIELD", "PX_HIGH_52W", "PX_LOW_52W"].includes(column)) return 1;
+  if (["PX_MID", "PRICE_MOVE_3M", "PRICE_MOVE_7D", "YIELD", "LAST_30D_VOLUME_MM", "PX_HIGH_52W", "PX_LOW_52W"].includes(column)) return 1;
   if (["OAS", "OAS_DELTA"].includes(column)) return 0;
   return 2;
 }
 
 function moversDigits(column) {
   if (column === "Amount Out ($MM)") return 0;
-  if (["Current Px", "3M Price Move"].includes(column)) return 1;
+  if (["Current Px", "3M Price Move", "7D Price Move", "ACTIVE_MOVE"].includes(column)) return 1;
   return 2;
 }
 
@@ -220,22 +239,25 @@ async function downloadExcel(url, payload) {
 }
 
 function sortIndicator(column) {
-  if (sortField.value !== column) return "";
-  return sortDirection.value === "asc" ? " &uarr;" : " &darr;";
+  if (state.sortField !== column) return "";
+  return state.sortDirection === "asc" ? " &uarr;" : " &darr;";
 }
 
-function renderPriceMove(row) {
-  const currentRaw = row.PX_MID;
-  const priorRaw = row.PX_MID_T90;
-  if (currentRaw === null || currentRaw === undefined || currentRaw === "") return "N/A";
-  if (priorRaw === null || priorRaw === undefined || priorRaw === "") return "N/A";
-  const current = Number(currentRaw);
-  const prior = Number(priorRaw);
-  if (Number.isNaN(current) || Number.isNaN(prior)) return "N/A";
-  const move = current - prior;
+function fmtPriceMove(moveVal) {
+  if (moveVal === null || moveVal === undefined || moveVal === "") return "-";
+  const move = Number(moveVal);
+  if (Number.isNaN(move)) return "-";
   const cssClass = move < 0 ? "negative" : move > 0 ? "positive" : "neutral";
   const prefix = move > 0 ? "+" : "";
   return `<span class="price-move ${cssClass}">${prefix}${fmt(move, 1)}</span>`;
+}
+
+function renderPriceMove(row) {
+  return fmtPriceMove(row.PRICE_MOVE_3M);
+}
+
+function renderPriceMove7D(row) {
+  return fmtPriceMove(row.PRICE_MOVE_7D);
 }
 
 function renderPriceRange(row) {
@@ -270,32 +292,79 @@ function renderMoverPriceRange(row) {
   `;
 }
 
+const glossaryEntries = [
+  { sup: "1", label: "Face ($BN)", def: "Face value of instruments that fit the screening criteria" },
+  { sup: "2", label: "Price", def: "Price weighted by face amounts outstanding" },
+  { sup: "3", label: "Yield", def: "Yield weighted by face amounts outstanding" },
+  { sup: "4", label: "3M / 7D Price Move", def: "Largest price movement among qualifying instruments over the time period" },
+  { sup: "5", label: "52W Peak Upside", def: "The dollar amount to be gained assuming all securities' prices revert to their 52-week highest prices" },
+  { sup: "6", label: "Return To Par Upside", def: "The dollar amount to be gained assuming all securities' prices revert to par (100)" },
+  { sup: "7", label: "Last Month Traded Volume ($MM)", def: "Traded volume (in thousands of USD) for the last month based on all trades reported to FINRA TRACE" },
+];
+
 function renderIssuerTable() {
-  const leadingColumns = ["Issuer", "Sector", "Total Face ($BN)", "Face Meets Criteria ($BN)", "% Face Meets Criteria", "WA Price", "WA Yield"];
-  const trailingColumns = ["Secured (%)", "Seniority Basis (pts)", "<1Y", "1-3Y", "3-5Y", "Nearest Maturity", "# Tranches"];
+  const faceColumns = ["Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)"];
+
+  const is52w = state.upsideMode === "52w";
+  const upsideLabel = is52w ? "52W Peak Upside" : "Return to Par Upside";
+  const upsideSup = is52w ? "<sup>5</sup>" : "<sup>6</sup>";
+  const upsideSecKey = is52w ? "52W PEAK UPSIDE SECURED ($MM)" : "RETURN TO PAR SECURED ($MM)";
+  const upsideUnsecKey = is52w ? "52W PEAK UPSIDE UNSECURED ($MM)" : "RETURN TO PAR UNSECURED ($MM)";
+  const upsidePrefKey = is52w ? "52W PEAK UPSIDE PREFERRED ($MM)" : "RETURN TO PAR PREFERRED ($MM)";
+
+  const is3m = state.moveMode === "3m";
+  const moveLabel = is3m ? "3M Price Move" : "7D Price Move";
+  const moveKey = is3m ? "3M Price Move" : "7D Price Move";
+
   const tableColumnOrder = [
-    ...leadingColumns,
-    "52W PEAK UPSIDE SECURED ($MM)",
-    "52W PEAK UPSIDE UNSECURED ($MM)",
-    ...trailingColumns,
+    "Issuer", "Sector",
+    ...faceColumns,
+    upsideSecKey,
+    upsideUnsecKey,
+    upsidePrefKey,
+    "Price", "Yield",
+    moveKey,
     "COVERAGE PRIMARY",
     "COVERAGE SECONDARY",
   ];
 
   issuerHead.innerHTML = `
-    <tr>
-      ${leadingColumns.map((column) => `<th rowspan="2"><button type="button" class="sort-header" data-sort="${column}">${column}${sortIndicator(column)}</button></th>`).join("")}
-      <th colspan="2" class="group-header">52W Peak Upside</th>
-      ${trailingColumns.map((column) => `<th rowspan="2"><button type="button" class="sort-header" data-sort="${column}">${column}${sortIndicator(column)}</button></th>`).join("")}
-      <th colspan="2" class="group-header">Coverage</th>
+    <tr class="header-group-row">
+      <th></th>
+      <th></th>
+      <th colspan="3" class="group-header">Face ($BN)<sup>1</sup></th>
+      <th colspan="3" class="group-header upside-toggle" id="upsideToggle" title="Click to toggle">${upsideLabel}${upsideSup} &#x21c4;</th>
+      <th></th>
+      <th></th>
+      <th class="group-header upside-toggle" id="moveToggle" title="Click to toggle">${moveLabel}<sup>4</sup> &#x21c4;</th>
+      <th colspan="2" class="group-header">Coverage (WIP)</th>
     </tr>
     <tr>
-      <th><button type="button" class="sort-header" data-sort="52W PEAK UPSIDE SECURED ($MM)">Secured ($MM)${sortIndicator("52W PEAK UPSIDE SECURED ($MM)")}</button></th>
-      <th><button type="button" class="sort-header" data-sort="52W PEAK UPSIDE UNSECURED ($MM)">Unsecured ($MM)${sortIndicator("52W PEAK UPSIDE UNSECURED ($MM)")}</button></th>
-      <th><button type="button" class="sort-header" data-sort="COVERAGE PRIMARY">Primary${sortIndicator("COVERAGE PRIMARY")}</button></th>
-      <th><button type="button" class="sort-header" data-sort="COVERAGE SECONDARY">Secondary${sortIndicator("COVERAGE SECONDARY")}</button></th>
+      <th class="col-fit">Issuer</th>
+      <th class="col-fit">Sector</th>
+      <th><button type="button" class="sort-header" data-sort="Secured Face ($BN)">Secured${sortIndicator("Secured Face ($BN)")}</button></th>
+      <th><button type="button" class="sort-header" data-sort="Unsecured Face ($BN)">Unsecured${sortIndicator("Unsecured Face ($BN)")}</button></th>
+      <th><button type="button" class="sort-header" data-sort="Preferred Face ($BN)">Preferred${sortIndicator("Preferred Face ($BN)")}</button></th>
+      <th><button type="button" class="sort-header" data-sort="${upsideSecKey}">Secured ($MM)${sortIndicator(upsideSecKey)}</button></th>
+      <th><button type="button" class="sort-header" data-sort="${upsideUnsecKey}">Unsecured ($MM)${sortIndicator(upsideUnsecKey)}</button></th>
+      <th><button type="button" class="sort-header" data-sort="${upsidePrefKey}">Preferred ($MM)${sortIndicator(upsidePrefKey)}</button></th>
+      <th><button type="button" class="sort-header" data-sort="Price">Price<sup>2</sup>${sortIndicator("Price")}</button></th>
+      <th><button type="button" class="sort-header" data-sort="Yield">Yield<sup>3</sup>${sortIndicator("Yield")}</button></th>
+      <th><button type="button" class="sort-header" data-sort="${moveKey}">${moveLabel}${sortIndicator(moveKey)}</button></th>
+      <th>Primary</th>
+      <th>Secondary</th>
     </tr>
   `;
+
+  document.getElementById("upsideToggle").addEventListener("click", () => {
+    state.upsideMode = state.upsideMode === "52w" ? "par" : "52w";
+    renderIssuerTable();
+  });
+
+  document.getElementById("moveToggle").addEventListener("click", () => {
+    state.moveMode = state.moveMode === "3m" ? "7d" : "3m";
+    renderIssuerTable();
+  });
 
   issuerBody.innerHTML = state.filteredIssuers.map((row) => {
     const selected = state.selectedIssuer === row.PARENT_TICKER ? "selected" : "";
@@ -305,12 +374,11 @@ function renderIssuerTable() {
         const marker = row.REPORT_SENTIMENT_COLOR
           ? `<sup class="sentiment-marker ${row.REPORT_SENTIMENT_COLOR}" title="${row.REPORT_SENTIMENT_LABEL || "Report sentiment"}"></sup>`
           : "";
-        return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${marker}</button></td>`;
+        const defaultedMarker = row.HAS_DEFAULTED ? `<sup class="defaulted-marker" title="Defaulted">D</sup>` : "";
+        return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${defaultedMarker}${marker}</button></td>`;
       }
-      if (column === "Seniority Basis (pts)") {
-        return `<td><span class="basis-value ${seniorityClass(value)}">${fmt(value, 1)}</span></td>`;
-      }
-      return `<td>${fmt(value, issuerDigits(column))}</td>`;
+      if (column === "3M Price Move" || column === "7D Price Move") return `<td>${fmtPriceMove(value)}</td>`;
+      return `<td>${fmtIssuer(column, value)}</td>`;
     }).join("");
     return `<tr class="${selected}">${cells}</tr>`;
   }).join("");
@@ -328,11 +396,11 @@ function renderIssuerTable() {
   document.querySelectorAll("[data-sort]").forEach((button) => {
     button.addEventListener("click", () => {
       const column = button.dataset.sort;
-      if (sortField.value === column) {
-        sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
+      if (state.sortField === column) {
+        state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
       } else {
-        sortField.value = column;
-        sortDirection.value = "desc";
+        state.sortField = column;
+        state.sortDirection = "desc";
       }
       applyFilters();
     });
@@ -344,7 +412,7 @@ function renderMoversChart() {
   const metricLabel = metric === "count" ? "Security Count by Sector" : "Amount Outstanding ($MM) by Sector";
   moversChartTitle.textContent = metricLabel;
   if (!state.moversSectorSummary.length) {
-    moversChart.innerHTML = `<div class="status-bar">No securities with absolute 3M price move above 10.</div>`;
+    moversChart.innerHTML = `<div class="status-bar">No securities matching the current filter criteria.</div>`;
     return;
   }
   const metricKey = metric === "count" ? "Security Count" : "Amount Out ($MM)";
@@ -363,20 +431,23 @@ function renderMoversChart() {
 }
 
 function renderMoversTable() {
+  const activeMoveKey = moversSortField.value === "7D Price Move" ? "7D Price Move" : "3M Price Move";
+  const activeMoveLabel = activeMoveKey === "7D Price Move" ? "7D Price Move" : "3M Price Move";
   moversHead.innerHTML = `<tr>${moversColumns.map((column) => {
-    if (["Current Px", "3M Price Move"].includes(column.key)) {
-      const marker = moversSortField.value === column.key ? (moversSortDirection.value === "asc" ? " &uarr;" : " &darr;") : "";
-      return `<th><button type="button" class="sort-header mover-sort-header" data-mover-sort="${column.key}">${column.label}${marker}</button></th>`;
+    if (column.key === "ACTIVE_MOVE") {
+      const marker = moversSortDirection.value === "asc" ? " &uarr;" : " &darr;";
+      return `<th><button type="button" class="sort-header mover-sort-header" data-mover-sort="${activeMoveKey}">${activeMoveLabel}${marker}</button></th>`;
+    }
+    if (column.key === "Current Px") {
+      const marker = moversSortField.value === "Current Px" ? (moversSortDirection.value === "asc" ? " &uarr;" : " &darr;") : "";
+      return `<th><button type="button" class="sort-header mover-sort-header" data-mover-sort="Current Px">Current Px${marker}</button></th>`;
     }
     return `<th>${column.label}</th>`;
   }).join("")}</tr>`;
   moversBody.innerHTML = state.moversRows.map((row) => {
     const cells = moversColumns.map((column) => {
-      if (column.key === "3M Price Move") {
-        const move = Number(row[column.key]);
-        const cssClass = move < 0 ? "negative" : move > 0 ? "positive" : "neutral";
-        const prefix = move > 0 ? "+" : "";
-        return `<td><span class="price-move ${cssClass}">${prefix}${fmt(move, 1)}</span></td>`;
+      if (column.key === "ACTIVE_MOVE") {
+        return `<td>${fmtPriceMove(row[activeMoveKey])}</td>`;
       }
       if (column.key === "Price Range") {
         return `<td>${renderMoverPriceRange(row)}</td>`;
@@ -418,30 +489,61 @@ function renderAbnormalPriceTable() {
   abnormalPriceStatus.textContent = `${state.abnormalPriceRows.length} securities with current price above 120 excluded from issuer weighted averages`;
 }
 
+const exclusionColumns = [
+  { key: "Issuer", label: "Issuer" },
+  { key: "NAME", label: "Security" },
+  { key: "SECTOR", label: "Sector" },
+  { key: "PAYMENT_RANK", label: "Lien" },
+  { key: "MATURITY", label: "Mat" },
+  { key: "AMT_OUTSTANDING_MM", label: "Amt Out ($MM)" },
+  { key: "PX_MID", label: "Price" },
+  { key: "YIELD", label: "Yield" },
+  { key: "Exclusion Reason", label: "Exclusion Reason" },
+];
+
+function renderExclusionsTable() {
+  exclusionsHead.innerHTML = `<tr>${exclusionColumns.map((c) => `<th>${c.label}</th>`).join("")}</tr>`;
+  exclusionsBody.innerHTML = state.excludedRows.map((row) => {
+    const cells = exclusionColumns.map((c) => `<td>${fmt(row[c.key], 2)}</td>`).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+  exclusionsStatus.textContent = `${state.excludedRows.length} securities excluded from screening`;
+}
+
 function setExceptionsSubtab(tabName) {
-  const abnormalPriceActive = tabName === "abnormal-price";
-  abnormalPriceSubtabButton.classList.toggle("active", abnormalPriceActive);
-  abnormalBbgSubtabButton.classList.toggle("active", !abnormalPriceActive);
-  abnormalPricePanel.classList.toggle("hidden", !abnormalPriceActive);
-  abnormalBbgPanel.classList.toggle("hidden", abnormalPriceActive);
+  abnormalPriceSubtabButton.classList.toggle("active", tabName === "abnormal-price");
+  exclusionsSubtabButton.classList.toggle("active", tabName === "exclusions");
+  abnormalBbgSubtabButton.classList.toggle("active", tabName === "abnormal-bbg");
+  abnormalPricePanel.classList.toggle("hidden", tabName !== "abnormal-price");
+  exclusionsPanel.classList.toggle("hidden", tabName !== "exclusions");
+  abnormalBbgPanel.classList.toggle("hidden", tabName !== "abnormal-bbg");
 }
 
 function applyMoversFilters() {
   const direction = moversDirectionFilter.value;
   const sortBy = moversSortField.value;
   const ascending = moversSortDirection.value === "asc";
+  const is7d = sortBy === "7D Price Move";
+  const moveKey = is7d ? "7D Price Move" : "3M Price Move";
+  const threshold = is7d ? 3 : 10;
 
   let rows = [...state.rawMoversRows];
   rows = rows.filter((row) => {
     const currentPx = Number(row["Current Px"]);
     return !Number.isNaN(currentPx) && currentPx <= 105;
   });
-  if (direction === "down") rows = rows.filter((row) => Number(row["3M Price Move"]) <= -10);
-  if (direction === "up") rows = rows.filter((row) => Number(row["3M Price Move"]) >= 10);
+  rows = rows.filter((row) => {
+    const move = Number(row[moveKey]);
+    if (Number.isNaN(move)) return false;
+    if (direction === "down") return move <= -threshold;
+    if (direction === "up") return move >= threshold;
+    return Math.abs(move) > threshold;
+  });
 
+  const effectiveSortKey = sortBy === "Current Px" ? "Current Px" : moveKey;
   rows.sort((left, right) => {
-    const a = Number(left[sortBy]);
-    const b = Number(right[sortBy]);
+    const a = Number(left[effectiveSortKey]);
+    const b = Number(right[effectiveSortKey]);
     const result = (Number.isNaN(a) ? 0 : a) - (Number.isNaN(b) ? 0 : b);
     return ascending ? result : -result;
   });
@@ -466,7 +568,8 @@ function applyMoversFilters() {
       return (b[metricKey] || 0) - (a[metricKey] || 0);
     });
 
-  const directionLabel = direction === "down" ? "price move down below -10" : direction === "up" ? "price move up above 10" : "absolute 3M price move above 10";
+  const periodLabel = is7d ? "7D" : "3M";
+  const directionLabel = direction === "down" ? `${periodLabel} price move down below -${threshold}` : direction === "up" ? `${periodLabel} price move up above ${threshold}` : `absolute ${periodLabel} price move above ${threshold}`;
   moversStatus.textContent = `${state.moversRows.length} securities with ${directionLabel}`;
   renderMoversChart();
   renderMoversTable();
@@ -476,33 +579,24 @@ function setActiveTab(tabName) {
   const issuerActive = tabName === "issuer";
   const moversActive = tabName === "movers";
   const exceptionsActive = tabName === "exceptions";
+  const documentationActive = tabName === "documentation";
   issuerTabButton.classList.toggle("active", issuerActive);
   moversTabButton.classList.toggle("active", moversActive);
   exceptionsTabButton.classList.toggle("active", exceptionsActive);
+  documentationTabButton.classList.toggle("active", documentationActive);
   issuerTabPanel.classList.toggle("hidden", !issuerActive);
   moversTabPanel.classList.toggle("hidden", !moversActive);
   exceptionsTabPanel.classList.toggle("hidden", !exceptionsActive);
+  documentationTabPanel.classList.toggle("hidden", !documentationActive);
 }
 
 function applyFilters() {
   const search = searchInput.value.trim().toLowerCase();
   const sector = sectorFilter.value;
-  const minIssuerYield = Number(issuerMinYieldInput.value || 0);
-  const minScreenFace = Number(minScreenFaceInput.value || 0);
-  const sortBy = sortField.value;
-  const ascending = sortDirection.value === "asc";
+  const sortBy = state.sortField;
+  const ascending = state.sortDirection === "asc";
 
   let rows = [...state.issuers];
-  rows = rows.filter((row) => {
-    const maxYield = Number(row["Max Yield"]);
-    return !Number.isNaN(maxYield) && maxYield >= minIssuerYield;
-  });
-  if (minScreenFace > 0) {
-    rows = rows.filter((row) => {
-      const screenFace = Number(row["Face Meets Criteria ($BN)"]);
-      return !Number.isNaN(screenFace) && screenFace >= minScreenFace;
-    });
-  }
   if (sector !== "All") rows = rows.filter((row) => row.Sector === sector);
   if (search) {
     rows = rows.filter((row) =>
@@ -522,7 +616,9 @@ function applyFilters() {
   });
 
   state.filteredIssuers = rows;
-  statusBar.textContent = `Anchor: ${state.metadata.anchor_date || "n/a"} | T-90: ${state.metadata.t90_date || "n/a"} | ${state.issuers.length} total issuers | Showing ${rows.length}`;
+  const anchorDateEl = document.getElementById("anchorDate");
+  if (anchorDateEl) anchorDateEl.textContent = `As of ${state.metadata.anchor_date || "n/a"}`;
+  statusBar.textContent = `${state.issuers.length} total issuers | Showing ${rows.length}`;
   clearSearchButton.classList.toggle("hidden", !searchInput.value);
   if (state.selectedIssuer && !rows.some((row) => row.PARENT_TICKER === state.selectedIssuer)) {
     state.selectedIssuer = null;
@@ -536,24 +632,33 @@ function applyFilters() {
 }
 
 function renderIssuerDetail(parentTicker) {
-  const minYield = Number(issuerMinYieldInput.value || 0);
   const anchorDate = state.metadata.anchor_date ? new Date(state.metadata.anchor_date) : null;
   const minMaturity = anchorDate ? new Date(anchorDate) : null;
   if (minMaturity) minMaturity.setFullYear(minMaturity.getFullYear() + 1);
   const rows = (state.instrumentMap.get(parentTicker) || []).filter((row) => {
+    if (row._IS_DEFAULTED) return false;
     const rowYield = Number(row.YIELD);
     const rowAmount = Number(row.AMT_OUTSTANDING_MM);
-    const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
     const rankText = String(row.PAYMENT_RANK || "").toLowerCase();
+    const isPreferred = rankText === "preferred";
+    const rowPx = Number(row.PX_MID);
+    const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
     const maturityEligible = !minMaturity || (maturity instanceof Date && !Number.isNaN(maturity.getTime()) && maturity > minMaturity);
-    return rowYield >= minYield && rowAmount >= 200 && maturityEligible && !rankText.includes("subordinated");
+    if (isPreferred) return rowYield >= 7 && rowAmount >= 200 && rowPx < 90 && maturityEligible;
+    return rowYield >= 7 && rowAmount >= 200 && rowPx < 90 && maturityEligible && !rankText.includes("subordinated");
+  });
+  rows.sort((a, b) => {
+    const aSecured = String(a.PAYMENT_RANK || "").toLowerCase().includes("secured") && !String(a.PAYMENT_RANK || "").toLowerCase().includes("unsecured");
+    const bSecured = String(b.PAYMENT_RANK || "").toLowerCase().includes("secured") && !String(b.PAYMENT_RANK || "").toLowerCase().includes("unsecured");
+    if (aSecured !== bSecured) return aSecured ? -1 : 1;
+    return (Number(b.AMT_OUTSTANDING_MM) || 0) - (Number(a.AMT_OUTSTANDING_MM) || 0);
   });
   state.detailRows = rows;
   const issuer = state.issuers.find((row) => row.PARENT_TICKER === parentTicker);
   state.selectedIssuer = parentTicker;
   detailCard.classList.remove("hidden");
   detailTicker.textContent = parentTicker;
-  detailTitle.textContent = `${issuer?.Issuer || parentTicker} capital stack`;
+  detailTitle.textContent = issuer?.Issuer || parentTicker;
   if (issuer?.REPORT_SUMMARY_BULLETS?.length) {
     reportSummaryCard.classList.remove("hidden");
     reportMeta.textContent = issuer.REPORT_DATE ? `Report date: ${issuer.REPORT_DATE}` : "";
@@ -563,17 +668,54 @@ function renderIssuerDetail(parentTicker) {
     reportMeta.textContent = "";
     reportBullets.innerHTML = "";
   }
-  detailHead.innerHTML = `<tr>${detailColumns.map((column) => `<th>${column.label}</th>`).join("")}</tr>`;
+  detailHead.innerHTML = `<tr>${detailColumns.map((column) => {
+    const sup = column.key === "LAST_30D_VOLUME_MM" ? "<sup>7</sup>" : "";
+    return `<th>${column.label}${sup}</th>`;
+  }).join("")}</tr>`;
   detailBody.innerHTML = rows.map((row) => {
     const cells = detailColumns.map((column) => {
       const value = row[column.key];
+      if (column.key === "NAME") {
+        const dMarker = row._IS_DEFAULTED ? `<sup class="defaulted-marker" title="Defaulted">D</sup>` : "";
+        const bbgId = row.ID || "";
+        return `<td title="${bbgId}">${fmt(value, 2)}${dMarker}</td>`;
+      }
       if (column.key === "PRICE_MOVE_3M") return `<td>${renderPriceMove(row)}</td>`;
+      if (column.key === "PRICE_MOVE_7D") return `<td>${renderPriceMove7D(row)}</td>`;
       if (column.key === "PRICE_RANGE") return `<td>${renderPriceRange(row)}</td>`;
       const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
       return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
     }).join("");
     return `<tr>${cells}</tr>`;
   }).join("");
+
+  // Defaulted bonds table
+  const defaultedRows = (state.instrumentMap.get(parentTicker) || []).filter((row) => row._IS_DEFAULTED);
+  if (defaultedRows.length > 0) {
+    defaultedCard.classList.remove("hidden");
+    defaultedHead.innerHTML = `<tr>${detailColumns.map((column) => {
+      const sup = column.key === "LAST_30D_VOLUME_MM" ? "<sup>7</sup>" : "";
+      return `<th>${column.label}${sup}</th>`;
+    }).join("")}</tr>`;
+    defaultedBody.innerHTML = defaultedRows.map((row) => {
+      const cells = detailColumns.map((column) => {
+        const value = row[column.key];
+        if (column.key === "NAME") {
+          const bbgId = row.ID || "";
+          return `<td title="${bbgId}">${fmt(value, 2)}<sup class="defaulted-marker" title="Defaulted">D</sup></td>`;
+        }
+        if (column.key === "PRICE_MOVE_3M") return `<td>${renderPriceMove(row)}</td>`;
+        if (column.key === "PRICE_MOVE_7D") return `<td>${renderPriceMove7D(row)}</td>`;
+        if (column.key === "PRICE_RANGE") return `<td>${renderPriceRange(row)}</td>`;
+        const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
+        return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
+      }).join("");
+      return `<tr>${cells}</tr>`;
+    }).join("");
+  } else {
+    defaultedCard.classList.add("hidden");
+  }
+
   renderIssuerTable();
 }
 
@@ -588,10 +730,11 @@ async function openIssuerDetail(parentTicker) {
 
 async function loadDashboard() {
   setLoading(true, "Loading...");
-  const [dashboardPayload, moversPayload, abnormalPricesPayload] = await Promise.all([
+  const [dashboardPayload, moversPayload, abnormalPricesPayload, excludedPayload] = await Promise.all([
     fetchJson("/api/dashboard"),
     fetchJson("/api/price-movers"),
     fetchJson("/api/abnormal-prices"),
+    fetchJson("/api/excluded"),
   ]);
   state.issuers = dashboardPayload.issuers;
   state.filters = dashboardPayload.filters;
@@ -617,6 +760,7 @@ async function loadDashboard() {
     "52W Low": row.PX_LOW_52W,
     "52W High": row.PX_HIGH_52W,
   }));
+  state.excludedRows = excludedPayload.rows;
   applyFilters();
   applyMoversFilters();
   renderAbnormalPriceTable();
@@ -666,13 +810,18 @@ logoutButton.addEventListener("click", async () => {
 issuerTabButton.addEventListener("click", () => setActiveTab("issuer"));
 moversTabButton.addEventListener("click", () => setActiveTab("movers"));
 exceptionsTabButton.addEventListener("click", () => setActiveTab("exceptions"));
+documentationTabButton.addEventListener("click", () => setActiveTab("documentation"));
 abnormalPriceSubtabButton.addEventListener("click", () => {
   setExceptionsSubtab("abnormal-price");
   renderAbnormalPriceTable();
 });
+exclusionsSubtabButton.addEventListener("click", () => {
+  setExceptionsSubtab("exclusions");
+  renderExclusionsTable();
+});
 abnormalBbgSubtabButton.addEventListener("click", () => setExceptionsSubtab("abnormal-bbg"));
 
-[searchInput, sectorFilter, issuerMinYieldInput, minScreenFaceInput, sortField, sortDirection].forEach((element) => {
+[searchInput, sectorFilter].forEach((element) => {
   element.addEventListener("input", applyFilters);
   element.addEventListener("change", applyFilters);
 });
@@ -695,6 +844,21 @@ downloadIssuersButton.addEventListener("click", async () => {
 downloadDetailButton.addEventListener("click", async () => {
   if (!state.selectedIssuer) return;
   await downloadExcel("/api/export/detail", { issuer: state.selectedIssuer, rows: state.detailRows });
+});
+
+document.getElementById("glossaryButton").addEventListener("click", () => {
+  const existing = document.querySelector(".glossary-popup");
+  if (existing) { existing.remove(); return; }
+  const popup = document.createElement("div");
+  popup.className = "glossary-popup";
+  popup.innerHTML = `<table>${glossaryEntries.map((e) =>
+    `<tr><td><sup>${e.sup}</sup></td><td><strong>${e.label}</strong></td><td>${e.def}</td></tr>`
+  ).join("")}</table>`;
+  document.getElementById("glossaryButton").parentElement.style.position = "relative";
+  document.getElementById("glossaryButton").parentElement.appendChild(popup);
+  setTimeout(() => document.addEventListener("click", (ev) => {
+    if (!popup.contains(ev.target) && ev.target.id !== "glossaryButton") popup.remove();
+  }, { once: true }), 0);
 });
 
 checkSession();

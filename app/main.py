@@ -165,21 +165,27 @@ def price_movers(_: str = Depends(get_current_user)) -> JSONResponse:
     movers: list[dict] = []
     for row in dataset.instrument_rows:
         current_px = pd.to_numeric(row.get("PX_MID"), errors="coerce")
-        prior_px = pd.to_numeric(row.get("PX_MID_T90"), errors="coerce")
-        if pd.isna(current_px) or pd.isna(prior_px):
+        if pd.isna(current_px):
             continue
-        move = current_px - prior_px
-        if abs(move) <= 10:
+        move_3m = row.get("PRICE_MOVE_3M")
+        move_3m_val = float(move_3m) if move_3m is not None and not pd.isna(pd.to_numeric(move_3m, errors="coerce")) else None
+        move_7d = row.get("PRICE_MOVE_7D")
+        move_7d_val = float(move_7d) if move_7d is not None and not pd.isna(pd.to_numeric(move_7d, errors="coerce")) else None
+        qualifies_3m = move_3m_val is not None and abs(move_3m_val) > 10
+        qualifies_7d = move_7d_val is not None and abs(move_7d_val) > 3
+        if not qualifies_3m and not qualifies_7d:
             continue
+        raw_vol = row.get("LAST_30D_VOLUME_MM")
         mover = {
             "Issuer Name": issuer_name_map.get(row.get("PARENT_TICKER")) or row.get("PARENT_TICKER"),
             "Security Name": row.get("NAME"),
             "Sector": row.get("SECTOR"),
-            "Rank": row.get("PAYMENT_RANK"),
-            "Mat": row.get("MATURITY"),
+            "Lien": row.get("PAYMENT_RANK"),
             "Amount Out ($MM)": row.get("AMT_OUTSTANDING_MM"),
+            "Last Month Traded Volume ($MM)": round(float(raw_vol), 4) if raw_vol is not None and not pd.isna(raw_vol) else None,
             "Current Px": current_px,
-            "3M Price Move": round(float(move), 4),
+            "3M Price Move": round(move_3m_val, 4) if move_3m_val is not None else None,
+            "7D Price Move": round(move_7d_val, 4) if move_7d_val is not None else None,
             "PX_LOW_52W": row.get("PX_LOW_52W"),
             "PX_HIGH_52W": row.get("PX_HIGH_52W"),
         }
@@ -205,6 +211,12 @@ def price_movers(_: str = Depends(get_current_user)) -> JSONResponse:
 def abnormal_prices(_: str = Depends(get_current_user)) -> JSONResponse:
     dataset = ensure_data_loaded()
     return JSONResponse({"rows": dataset.abnormal_price_rows})
+
+
+@app.get("/api/excluded")
+def excluded_securities(_: str = Depends(get_current_user)) -> JSONResponse:
+    dataset = ensure_data_loaded()
+    return JSONResponse({"rows": dataset.excluded_rows})
 
 
 @app.post("/api/export/issuers")

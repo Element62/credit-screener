@@ -3,13 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Credit Screenr</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260402b" />
+    <title>Credit Screener</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260423g" />
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
-        <div>
+        <div class="brand-group">
+          <img src="/static/oak-logo.jpg" alt="Oaktree" class="brand-logo" />
           <p class="eyebrow brand">Credit Screen</p>
         </div>
         <button id="logoutButton" class="secondary hidden">Log out</button>
@@ -33,13 +34,15 @@
         <section class="card">
           <div class="tab-strip">
             <button id="issuerTabButton" type="button" class="tab-button active">Issuer Screen</button>
-            <button id="moversTabButton" type="button" class="tab-button">3M Price Movers</button>
+            <button id="moversTabButton" type="button" class="tab-button">Price Movers</button>
+            <button id="documentationTabButton" type="button" class="tab-button">Documentation</button>
             <button id="exceptionsTabButton" type="button" class="tab-button">Exceptions</button>
           </div>
         </section>
 
         <div id="issuerTabPanel">
         <section class="card">
+          <p id="anchorDate" class="anchor-date"></p>
           <div class="toolbar">
             <div class="toolbar-group">
               <label>Search
@@ -51,11 +54,8 @@
               <label>Sector<select id="sectorFilter"><option value="All">All</option></select></label>
             </div>
             <div class="toolbar-group">
-              <label>Min issuer yield (%)<input id="issuerMinYieldInput" type="number" min="0" step="0.1" value="7" /></label>
-              <label>Min screen face ($BN)<input id="minScreenFaceInput" type="number" min="0" step="0.1" value="0" /></label>
-              <label>Sort by<select id="sortField"><option value="Total Face ($BN)">Total Face ($BN)</option><option value="Face Meets Criteria ($BN)">Face Meets Criteria ($BN)</option><option value="% Face Meets Criteria">% Face Meets Criteria</option><option value="WA Price">WA Price</option><option value="WA Yield">WA Yield</option><option value="52W PEAK UPSIDE SECURED ($MM)" selected>52W PEAK UPSIDE SECURED ($MM)</option><option value="52W PEAK UPSIDE UNSECURED ($MM)">52W PEAK UPSIDE UNSECURED ($MM)</option></select></label>
-              <label>Order<select id="sortDirection"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
               <button id="downloadIssuersButton" type="button" class="secondary">Download Issuer View</button>
+              <button id="glossaryButton" type="button" class="secondary glossary-btn">i</button>
             </div>
           </div>
           <div id="statusBar" class="status-bar"></div>
@@ -97,20 +97,33 @@
             </table>
           </div>
         </section>
+
+        <section id="defaultedCard" class="card hidden">
+          <div class="detail-header">
+            <div>
+              <p class="eyebrow defaulted-eyebrow">Defaulted Bonds</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead id="defaultedHead"></thead>
+              <tbody id="defaultedBody"></tbody>
+            </table>
+          </div>
+        </section>
         </div>
 
         <div id="moversTabPanel" class="hidden">
           <section class="card">
             <div class="detail-header">
               <div>
-                <p class="eyebrow">3M Movers</p>
                 <p id="moversStatus" class="status-bar"></p>
                 <p id="moversChartTitle" class="chart-title"></p>
               </div>
               <div class="toolbar-group">
                 <label>Direction
                   <select id="moversDirectionFilter">
-                    <option value="all">Absolute Move &gt; 10</option>
+                    <option value="all">All Movers</option>
                     <option value="down" selected>Price Move Down</option>
                     <option value="up">Price Move Up</option>
                   </select>
@@ -124,6 +137,7 @@
                 <label>Sort by
                   <select id="moversSortField">
                     <option value="3M Price Move">3M Price Move</option>
+                    <option value="7D Price Move">7D Price Move</option>
                     <option value="Current Px">Current Px</option>
                   </select>
                 </label>
@@ -158,6 +172,7 @@
             </div>
             <div class="subtab-strip">
               <button id="abnormalPriceSubtabButton" type="button" class="tab-button active">Abnormal Price</button>
+              <button id="exclusionsSubtabButton" type="button" class="tab-button">Exclusions</button>
               <button id="abnormalBbgSubtabButton" type="button" class="tab-button">AbnormalBBG Analytics</button>
             </div>
           </section>
@@ -167,6 +182,21 @@
               <table>
                 <thead id="abnormalPriceHead"></thead>
                 <tbody id="abnormalPriceBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="exclusionsPanel" class="card hidden">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">Excluded from Screening</p>
+                <p id="exclusionsStatus" class="status-bar"></p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead id="exclusionsHead"></thead>
+                <tbody id="exclusionsBody"></tbody>
               </table>
             </div>
           </section>
@@ -212,9 +242,54 @@
           </section>
         </div>
 
+        <div id="documentationTabPanel" class="hidden">
+          <section class="card">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">Screening Methodology</p>
+                <h2>How the Issuer Screen is Built</h2>
+              </div>
+            </div>
+
+            <h3>Step 1 &mdash; Bloomberg SRCH Universe</h3>
+            <p>Using the <strong>SRCH</strong> function in Bloomberg, the following filters are applied to generate the initial universe of securities:</p>
+            <table class="doc-table">
+              <thead>
+                <tr><th>Filter</th><th>Criteria</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Security Type</td><td>Bonds, Preferred, and Loans</td></tr>
+                <tr><td>Status</td><td>Active</td></tr>
+                <tr><td>Maturity</td><td>&ge; 2 months from current date</td></tr>
+                <tr><td>Mid Price</td><td>&lt; 90</td></tr>
+                <tr><td>Ultimate Parent Amount Outstanding</td><td>&gt; $500MM</td></tr>
+                <tr><td>Issue Size</td><td>&gt; $200MM</td></tr>
+                <tr><td>Country / Region of Incorporation / Risk</td><td>Canada or United States</td></tr>
+                <tr><td>Yield to Maturity</td><td>&gt; 7%</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Step 2 &mdash; Issuer Aggregation</h3>
+            <p>The resulting bonds, loans, and preferred securities are grouped by their <strong>Ultimate Parent Ticker</strong>. For each issuer, the dashboard computes:</p>
+            <ul>
+              <li><strong>Face ($BN)</strong> &mdash; total qualifying face split by Secured, Unsecured, and Preferred</li>
+              <li><strong>52W Peak Upside / Return to Par</strong> &mdash; dollar upside if prices revert to 52-week highs or par, by seniority</li>
+              <li><strong>Price</strong> &mdash; face-weighted average price across qualifying instruments</li>
+              <li><strong>Yield</strong> &mdash; face-weighted average yield across qualifying instruments</li>
+            </ul>
+            <p>Issuers with no qualifying instruments (after all filters) are excluded from the screen unless they contain defaulted bonds.</p>
+
+            <h3>Additional Exclusions</h3>
+            <ul>
+              <li><strong>Defaulted</strong> &mdash; defaulted bonds are excluded from issuer-level metrics and shown in a separate table beneath the issuer detail view</li>
+              <li><strong>Subordinated</strong> &mdash; bonds with subordinated payment rank are excluded (non-preferred only)</li>
+            </ul>
+          </section>
+        </div>
+
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260402b"></script>
+    <script src="/static/app.js?v=20260423g"></script>
   </body>
 </html>
