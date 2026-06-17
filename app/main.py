@@ -5,6 +5,9 @@ import shutil
 from pathlib import Path
 
 import pandas as pd
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,11 +15,17 @@ from fastapi.staticfiles import StaticFiles
 from .auth import SESSION_COOKIE, create_session_token, decode_session_token
 from .config import DATA_DIR, load_settings
 from .data_loader import WorkbookData, load_workbook
+from .db import get_all_coverage, init_db, save_coverage
 from .report_processor import ReportProcessorService, normalize_company_name
 
 
 app = FastAPI(title="Credit Screenr")
 settings = load_settings()
+
+
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
 DATA_DIR.mkdir(exist_ok=True)
 settings.processed_report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,6 +101,221 @@ def build_excel_response(rows: list[dict], filename: str, sheet_name: str) -> St
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31] or "Sheet1")
     output.seek(0)
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Formatted issuer export
+# ---------------------------------------------------------------------------
+_NAVY = "113B74"
+_WHITE = "FFFAF4"
+_BG = "F6F7F4"
+_GREEN = "0B7F5A"
+_RED = "9F3E32"
+_AMBER = "B58A17"
+_LINE = "D0D5DD"
+_GROUP_BORDER_COLOR = "6B8CBF"
+
+_THIN = Side(style="thin", color=_LINE)
+_GROUP = Side(style="medium", color=_GROUP_BORDER_COLOR)
+_NO = Side(style=None)
+
+_HEADER_FILL = PatternFill("solid", fgColor=_NAVY)
+_ALT_FILL = PatternFill("solid", fgColor="EFF2F8")
+
+_ISSUER_COLS = [
+    "Issuer", "Sector",
+    "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
+    "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)",
+    "Price", "Yield", "3M Price Move", "7D Price Move",
+]
+
+_COL_LABELS = [
+    "Issuer", "Sector",
+    "Secured", "Unsecured", "Preferred",
+    "Secured", "Unsecured", "Preferred",
+    "Price", "Yield", "3M Move", "7D Move",
+]
+
+# (start_col_1based, end_col_1based, label)
+_GROUPS = [
+    (1, 1, "Issuer"),
+    (2, 2, "Sector"),
+    (3, 5, "FACE (In $ Billions)"),
+    (6, 8, "52W PEAK UPSIDE (In $ Millions)"),
+    (9, 9, "Price"),
+    (10, 10, "Yield"),
+    (11, 12, "Price Move"),
+]
+
+# Columns that get left group border (1-based)
+_GROUP_LEFT = {3, 6}
+# Columns that get right group border (1-based)
+_GROUP_RIGHT = {1, 5, 8}
+
+
+def _group_border(col: int, base_border: Border) -> Border:
+    left = _GROUP if col in _GROUP_LEFT else base_border.left
+    right = _GROUP if col in _GROUP_RIGHT else base_border.right
+    return Border(left=left, right=right, top=base_border.top, bottom=base_border.bottom)
+
+
+def build_issuer_excel_response(rows: list[dict], upside_mode: str) -> StreamingResponse:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Issuer Screen"
+
+    upside_label = "52W PEAK UPSIDE (In $ Millions)" if upside_mode == "52w" else "RETURN TO PAR UPSIDE (In $ Millions)"
+    upside_keys = (
+        ["52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)"]
+        if upside_mode == "52w"
+        else ["RETURN TO PAR SECURED ($MM)", "RETURN TO PAR UNSECURED ($MM)", "RETURN TO PAR PREFERRED ($MM)"]
+    )
+    col_keys = [
+        "Issuer", "Sector",
+        "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
+        *upside_keys,
+        "Price", "Yield", "3M Price Move", "7D Price Move", "3M MV Change ($MM)",
+    ]
+    n_cols = len(col_keys)
+
+    header_font = Font(name="Calibri", bold=True, color=_WHITE, size=9)
+    header_font_italic = Font(name="Calibri", bold=True, italic=True, color=_WHITE, size=9)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left_align = Alignment(horizontal="left", vertical="center")
+    right_align = Alignment(horizontal="right", vertical="center")
+
+    # ── Row 1: group headers ──────────────────────────────────────────────
+    groups = [
+        (1, 1, "Issuer", False),
+        (2, 2, "Sector", False),
+        (3, 5, "FACE", True),          # italic units appended below via rich-text workaround
+        (6, 8, upside_label, True),
+        (9, 9, "Price", False),
+        (10, 10, "Yield", False),
+        (11, 12, "Price Move", False),
+        (13, 13, "3M MV Change (In $MM)", False),
+    ]
+    for start, end, label, _italic in groups:
+        cell = ws.cell(row=1, column=start, value=label)
+        cell.font = header_font
+        cell.fill = _HEADER_FILL
+        cell.alignment = center
+        if end > start:
+            ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
+        b = _group_border(start, Border(top=_THIN, bottom=_THIN, left=_THIN, right=_THIN))
+        cell.border = b
+
+    # fill remaining merged cells in row 1
+    for c in range(1, n_cols + 1):
+        cell = ws.cell(row=1, column=c)
+        if cell.value is None:
+            cell.fill = _HEADER_FILL
+            cell.border = _group_border(c, Border(top=_THIN, bottom=_THIN, left=_NO, right=_NO))
+
+    # ── Row 2: column labels ──────────────────────────────────────────────
+    col_labels = [
+        "Issuer", "Sector",
+        "Secured", "Unsecured", "Preferred",
+        "Secured", "Unsecured", "Preferred",
+        "Price", "Yield", "3M Move", "7D Move", "3M MV Chg",
+    ]
+    for c, label in enumerate(col_labels, start=1):
+        cell = ws.cell(row=2, column=c, value=label)
+        cell.font = header_font
+        cell.fill = _HEADER_FILL
+        cell.alignment = center
+        cell.border = _group_border(c, Border(top=_THIN, bottom=Side(style="medium", color=_NAVY), left=_THIN, right=_THIN))
+
+    ws.row_dimensions[1].height = 28
+    ws.row_dimensions[2].height = 18
+
+    # ── Data rows ────────────────────────────────────────────────────────
+    data_font = Font(name="Calibri", size=9)
+    data_font_bold = Font(name="Calibri", size=9, bold=True)
+
+    for r_idx, row in enumerate(rows, start=3):
+        fill = _ALT_FILL if r_idx % 2 == 0 else PatternFill("solid", fgColor=_WHITE)
+        for c_idx, key in enumerate(col_keys, start=1):
+            value = row.get(key)
+            cell = ws.cell(row=r_idx, column=c_idx)
+            cell.fill = fill
+            cell.border = _group_border(c_idx, Border(bottom=_THIN, left=_NO, right=_NO, top=_NO))
+
+            if key in ("3M Price Move", "7D Price Move") and value is not None:
+                try:
+                    v = float(value)
+                    cell.value = round(v, 2)
+                    cell.font = Font(name="Calibri", size=9, bold=True,
+                                     color=_GREEN if v > 0 else (_RED if v < 0 else "5D6A7D"))
+                    cell.number_format = '+0.00;-0.00;0.00'
+                    cell.alignment = right_align
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            if key in ("Price", "Yield") and value is not None:
+                try:
+                    cell.value = round(float(value), 2)
+                    cell.number_format = '0.00'
+                    cell.font = data_font
+                    cell.alignment = right_align
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            if key in ("Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)") and value is not None:
+                try:
+                    cell.value = round(float(value), 2)
+                    cell.number_format = '0.00'
+                    cell.font = data_font
+                    cell.alignment = right_align
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            if key in upside_keys and value is not None:
+                try:
+                    cell.value = round(float(value), 1)
+                    cell.number_format = '#,##0.0'
+                    cell.font = data_font
+                    cell.alignment = right_align
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            if key == "3M MV Change ($MM)" and value is not None:
+                try:
+                    v = float(value)
+                    cell.value = round(v, 0)
+                    cell.number_format = '+#,##0;-#,##0;"-"'
+                    cell.font = Font(name="Calibri", size=9, bold=True,
+                                     color=_GREEN if v > 0 else (_RED if v < 0 else "5D6A7D"))
+                    cell.alignment = right_align
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            cell.value = value if value is not None else ""
+            cell.font = data_font_bold if key == "Issuer" else data_font
+            cell.alignment = left_align if key in ("Issuer", "Sector") else right_align
+
+    # ── Column widths ─────────────────────────────────────────────────────
+    col_widths = [28, 14, 9, 10, 9, 9, 10, 9, 7, 7, 8, 8, 10]
+    for c, w in enumerate(col_widths, start=1):
+        ws.column_dimensions[get_column_letter(c)].width = w
+
+    # freeze panes below header rows
+    ws.freeze_panes = "A3"
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    headers = {"Content-Disposition": 'attachment; filename="issuer_screen.xlsx"'}
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -219,12 +443,35 @@ def excluded_securities(_: str = Depends(get_current_user)) -> JSONResponse:
     return JSONResponse({"rows": dataset.excluded_rows})
 
 
+@app.get("/api/loans")
+def loans(_: str = Depends(get_current_user)) -> JSONResponse:
+    dataset = ensure_data_loaded()
+    return JSONResponse({"rows": dataset.loan_rows})
+
+
+@app.get("/api/coverage")
+def get_coverage(_: str = Depends(get_current_user)) -> JSONResponse:
+    return JSONResponse({"coverages": get_all_coverage()})
+
+
+@app.post("/api/coverage")
+def post_coverage(payload: dict = Body(...), _: str = Depends(get_current_user)) -> JSONResponse:
+    ticker = payload.get("ticker", "")
+    primary = payload.get("primary", [])
+    secondary = payload.get("secondary", [])
+    if not ticker:
+        raise HTTPException(status_code=400, detail="ticker required")
+    save_coverage(str(ticker), list(primary), list(secondary))
+    return JSONResponse({"ok": True})
+
+
 @app.post("/api/export/issuers")
 def export_issuers(payload: dict = Body(...), _: str = Depends(get_current_user)) -> StreamingResponse:
     rows = payload.get("rows", [])
+    upside_mode = str(payload.get("upsideMode", "52w"))
     if not isinstance(rows, list):
         raise HTTPException(status_code=400, detail="rows must be a list")
-    return build_excel_response(rows, "issuer_view.xlsx", "Issuers")
+    return build_issuer_excel_response(rows[:50], upside_mode)
 
 
 @app.post("/api/export/detail")
@@ -235,6 +482,15 @@ def export_detail(payload: dict = Body(...), _: str = Depends(get_current_user))
         raise HTTPException(status_code=400, detail="rows must be a list")
     safe_name = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in issuer)[:80]
     return build_excel_response(rows, f"{safe_name}.xlsx", "Detail")
+
+
+@app.post("/api/admin/reload")
+def admin_reload(_: str = Depends(get_current_user)) -> JSONResponse:
+    workbook_path = settings.workbook_path
+    if not workbook_path.exists():
+        raise HTTPException(status_code=500, detail=f"Workbook not found: {workbook_path}")
+    dataset = store.refresh(workbook_path)
+    return JSONResponse({"ok": True, "metadata": dataset.metadata})
 
 
 @app.post("/api/admin/upload")

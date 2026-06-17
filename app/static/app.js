@@ -11,10 +11,18 @@ const state = {
   moversSectorSummary: [],
   abnormalPriceRows: [],
   excludedRows: [],
+  loanRows: [],
+  filteredLoanRows: [],
+  loanSortField: "AMT_OUTSTANDING_MM",
+  loanSortDirection: "desc",
+  loanScreened: false,
+  loanActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
+  loanFilterValues: { yieldMin: 9, yieldMax: 50, priceMax: 95 },
   upsideMode: "52w",
   moveMode: "3m",
   sortField: "52W PEAK UPSIDE SECURED ($MM)",
   sortDirection: "desc",
+  coverageMap: {},
 };
 
 const loginCard = document.getElementById("loginCard");
@@ -24,9 +32,11 @@ const loginError = document.getElementById("loginError");
 const logoutButton = document.getElementById("logoutButton");
 const loadingBanner = document.getElementById("loadingBanner");
 const issuerTabButton = document.getElementById("issuerTabButton");
+const loansTabButton = document.getElementById("loansTabButton");
 const moversTabButton = document.getElementById("moversTabButton");
 const exceptionsTabButton = document.getElementById("exceptionsTabButton");
 const issuerTabPanel = document.getElementById("issuerTabPanel");
+const loansTabPanel = document.getElementById("loansTabPanel");
 const moversTabPanel = document.getElementById("moversTabPanel");
 const exceptionsTabPanel = document.getElementById("exceptionsTabPanel");
 const documentationTabButton = document.getElementById("documentationTabButton");
@@ -54,23 +64,34 @@ const abnormalPriceStatus = document.getElementById("abnormalPriceStatus");
 const exclusionsHead = document.getElementById("exclusionsHead");
 const exclusionsBody = document.getElementById("exclusionsBody");
 const exclusionsStatus = document.getElementById("exclusionsStatus");
+const loansHead = document.getElementById("loansHead");
+const loansBody = document.getElementById("loansBody");
+const loansStatus = document.getElementById("loansStatus");
+const loansSearchInput = document.getElementById("loansSearchInput");
+const clearLoansSearchButton = document.getElementById("clearLoansSearchButton");
+const loanTopNInput = document.getElementById("loanTopNInput");
+const loanScreenButton = document.getElementById("loanScreenButton");
+const loanFilterChips = document.getElementById("loanFilterChips");
 const detailCard = document.getElementById("detailCard");
 const detailTicker = document.getElementById("detailTicker");
 const detailTitle = document.getElementById("detailTitle");
 const detailHead = document.getElementById("detailHead");
 const detailBody = document.getElementById("detailBody");
+const nonQualifyingCard = document.getElementById("nonQualifyingCard");
+const nonQualifyingHead = document.getElementById("nonQualifyingHead");
+const nonQualifyingBody = document.getElementById("nonQualifyingBody");
 const defaultedCard = document.getElementById("defaultedCard");
 const defaultedHead = document.getElementById("defaultedHead");
 const defaultedBody = document.getElementById("defaultedBody");
-const reportSummaryCard = document.getElementById("reportSummaryCard");
-const reportMeta = document.getElementById("reportMeta");
-const reportBullets = document.getElementById("reportBullets");
 const statusBar = document.getElementById("statusBar");
 const searchInput = document.getElementById("searchInput");
 const clearSearchButton = document.getElementById("clearSearchButton");
 const sectorFilter = document.getElementById("sectorFilter");
+const reloadDataButton = document.getElementById("reloadDataButton");
 const downloadIssuersButton = document.getElementById("downloadIssuersButton");
 const downloadDetailButton = document.getElementById("downloadDetailButton");
+const hideDetailButton = document.getElementById("hideDetailButton");
+const detailToggleBar = document.getElementById("detailToggleBar");
 
 function setLoading(isLoading, message = "Loading...") {
   if (!loadingBanner) return;
@@ -86,8 +107,8 @@ const issuerColumns = [
   "Preferred Face ($BN)",
   "Price",
   "Yield",
-  "3M Price Move",
-  "7D Price Move",
+  "3M MV Change ($MM)",
+  "7D MV Change ($MM)",
   "52W PEAK UPSIDE SECURED ($MM)",
   "52W PEAK UPSIDE UNSECURED ($MM)",
   "52W PEAK UPSIDE PREFERRED ($MM)",
@@ -144,6 +165,12 @@ function fmt(value, digits = 2) {
   return value;
 }
 
+const COVERAGE_ANALYSTS = [
+  "Alex Johnson", "Sarah Chen", "Michael Park",
+  "Emma Wilson", "David Kim", "Lisa Rodriguez",
+  "James Miller", "Nicole Wang",
+];
+
 const zeroAsDashColumns = new Set([
   "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
   "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)",
@@ -156,9 +183,30 @@ function fmtIssuer(column, value) {
 }
 
 function issuerDigits(column) {
-  if (["Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)", "Price", "Yield", "3M Price Move", "7D Price Move"].includes(column)) return 1;
-  if (["52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)", "RETURN TO PAR SECURED ($MM)", "RETURN TO PAR UNSECURED ($MM)", "RETURN TO PAR PREFERRED ($MM)", "OAS Delta (bps)"].includes(column)) return 0;
+  if (["Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)", "Price", "Yield"].includes(column)) return 1;
+  if (["52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)", "RETURN TO PAR SECURED ($MM)", "RETURN TO PAR UNSECURED ($MM)", "RETURN TO PAR PREFERRED ($MM)", "OAS Delta (bps)", "3M MV Change ($MM)"].includes(column)) return 0;
   return 2;
+}
+
+function renderCoverageCell(ticker, slot, names) {
+  if (!ticker) return "";
+  const t = String(ticker).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  const spans = names.map((name, idx) =>
+    `<span class="cov-name" data-ticker="${t}" data-slot="${slot}" data-idx="${idx}" title="Click to remove">${name}</span>`
+  ).join('<span class="cov-sep"> / </span>');
+  const addBtn = names.length < 2
+    ? `<button class="cov-add" data-ticker="${t}" data-slot="${slot}" title="Add analyst">+</button>`
+    : "";
+  return spans + addBtn;
+}
+
+function updateCoverageCells(ticker) {
+  const btn = issuerBody.querySelector(`[data-issuer="${CSS.escape(ticker)}"]`);
+  if (!btn) return;
+  const tds = btn.closest("tr").querySelectorAll("td");
+  const entry = state.coverageMap[ticker] || { primary: [], secondary: [] };
+  if (tds[11]) tds[11].innerHTML = renderCoverageCell(ticker, "primary", entry.primary || []);
+  if (tds[12]) tds[12].innerHTML = renderCoverageCell(ticker, "secondary", entry.secondary || []);
 }
 
 function detailDigits(column) {
@@ -294,12 +342,11 @@ function renderMoverPriceRange(row) {
 
 const glossaryEntries = [
   { sup: "1", label: "Face ($BN)", def: "Face value of instruments that fit the screening criteria" },
-  { sup: "2", label: "Price", def: "Price weighted by face amounts outstanding" },
-  { sup: "3", label: "Yield", def: "Yield weighted by face amounts outstanding" },
-  { sup: "4", label: "3M / 7D Price Move", def: "Largest price movement among qualifying instruments over the time period" },
-  { sup: "5", label: "52W Peak Upside", def: "The dollar amount to be gained assuming all securities' prices revert to their 52-week highest prices" },
-  { sup: "6", label: "Return To Par Upside", def: "The dollar amount to be gained assuming all securities' prices revert to par (100)" },
-  { sup: "7", label: "Last Month Traded Volume ($MM)", def: "Traded volume (in thousands of USD) for the last month based on all trades reported to FINRA TRACE" },
+  { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside assuming prices revert to 52-week highs (52W) or par (Return to Par)" },
+  { sup: "3", label: "3M / 7D MV Change", def: "Largest price movement among qualifying instruments over the time period" },
+  { sup: "4", label: "Price", def: "Price weighted by face amounts outstanding" },
+  { sup: "5", label: "Yield", def: "Yield weighted by face amounts outstanding" },
+  { sup: "6", label: "Last Month Traded Volume ($MM)", def: "Traded volume (in thousands of USD) for the last month based on all trades reported to FINRA TRACE" },
 ];
 
 function renderIssuerTable() {
@@ -307,14 +354,14 @@ function renderIssuerTable() {
 
   const is52w = state.upsideMode === "52w";
   const upsideLabel = is52w ? "52W Peak Upside" : "Return to Par Upside";
-  const upsideSup = is52w ? "<sup>5</sup>" : "<sup>6</sup>";
+  const upsideSup = "<sup>2</sup>";
   const upsideSecKey = is52w ? "52W PEAK UPSIDE SECURED ($MM)" : "RETURN TO PAR SECURED ($MM)";
   const upsideUnsecKey = is52w ? "52W PEAK UPSIDE UNSECURED ($MM)" : "RETURN TO PAR UNSECURED ($MM)";
   const upsidePrefKey = is52w ? "52W PEAK UPSIDE PREFERRED ($MM)" : "RETURN TO PAR PREFERRED ($MM)";
 
   const is3m = state.moveMode === "3m";
-  const moveLabel = is3m ? "3M Price Move" : "7D Price Move";
-  const moveKey = is3m ? "3M Price Move" : "7D Price Move";
+  const mvChangeKey = is3m ? "3M MV Change ($MM)" : "7D MV Change ($MM)";
+  const mvChangeLabel = is3m ? "3M MV △" : "7D MV △";
 
   const tableColumnOrder = [
     "Issuer", "Sector",
@@ -322,35 +369,34 @@ function renderIssuerTable() {
     upsideSecKey,
     upsideUnsecKey,
     upsidePrefKey,
+    mvChangeKey,
     "Price", "Yield",
-    moveKey,
     "COVERAGE PRIMARY",
     "COVERAGE SECONDARY",
   ];
 
   issuerHead.innerHTML = `
     <tr class="header-group-row">
+      <th class="col-group-r"></th>
       <th></th>
-      <th></th>
-      <th colspan="3" class="group-header">Face ($BN)<sup>1</sup></th>
-      <th colspan="3" class="group-header upside-toggle" id="upsideToggle" title="Click to toggle">${upsideLabel}${upsideSup} &#x21c4;</th>
-      <th></th>
-      <th></th>
-      <th class="group-header upside-toggle" id="moveToggle" title="Click to toggle">${moveLabel}<sup>4</sup> &#x21c4;</th>
+      <th colspan="3" class="group-header col-group-l">FACE <em>(In $ Billions)</em><sup>1</sup></th>
+      <th colspan="3" class="group-header upside-toggle col-group-l" id="upsideToggle" title="Click to toggle">${upsideLabel} <em>(In $ Millions)</em>${upsideSup} &#x21c4;</th>
+      <th class="group-header upside-toggle col-group-l col-group-r" id="moveToggle" title="Click to toggle" style="min-width:155px">${mvChangeLabel}<br><em>(In $ Millions)</em><sup>3</sup> &#x21c4;</th>
+      <th colspan="2" class="group-header col-group-r">Price &amp; Yield</th>
       <th colspan="2" class="group-header">Coverage (WIP)</th>
     </tr>
     <tr>
-      <th class="col-fit">Issuer</th>
+      <th class="col-fit col-group-r">Issuer</th>
       <th class="col-fit">Sector</th>
-      <th><button type="button" class="sort-header" data-sort="Secured Face ($BN)">Secured${sortIndicator("Secured Face ($BN)")}</button></th>
-      <th><button type="button" class="sort-header" data-sort="Unsecured Face ($BN)">Unsecured${sortIndicator("Unsecured Face ($BN)")}</button></th>
-      <th><button type="button" class="sort-header" data-sort="Preferred Face ($BN)">Preferred${sortIndicator("Preferred Face ($BN)")}</button></th>
-      <th><button type="button" class="sort-header" data-sort="${upsideSecKey}">Secured ($MM)${sortIndicator(upsideSecKey)}</button></th>
-      <th><button type="button" class="sort-header" data-sort="${upsideUnsecKey}">Unsecured ($MM)${sortIndicator(upsideUnsecKey)}</button></th>
-      <th><button type="button" class="sort-header" data-sort="${upsidePrefKey}">Preferred ($MM)${sortIndicator(upsidePrefKey)}</button></th>
-      <th><button type="button" class="sort-header" data-sort="Price">Price<sup>2</sup>${sortIndicator("Price")}</button></th>
-      <th><button type="button" class="sort-header" data-sort="Yield">Yield<sup>3</sup>${sortIndicator("Yield")}</button></th>
-      <th><button type="button" class="sort-header" data-sort="${moveKey}">${moveLabel}${sortIndicator(moveKey)}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="Secured Face ($BN)">Secured${sortIndicator("Secured Face ($BN)")}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="Unsecured Face ($BN)">Unsecured${sortIndicator("Unsecured Face ($BN)")}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="Preferred Face ($BN)">Preferred${sortIndicator("Preferred Face ($BN)")}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${upsideSecKey}">Secured${sortIndicator(upsideSecKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsideUnsecKey}">Unsecured${sortIndicator(upsideUnsecKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsidePrefKey}">Preferred${sortIndicator(upsidePrefKey)}</button></th>
+      <th class="col-tight col-group-l col-group-r"><button type="button" class="sort-header" data-sort="${mvChangeKey}">${sortIndicator(mvChangeKey) || "&#x21c5;"}</button></th>
+      <th><button type="button" class="sort-header" data-sort="Price">Price<sup>4</sup>${sortIndicator("Price")}</button></th>
+      <th class="col-group-r"><button type="button" class="sort-header" data-sort="Yield">Yield<sup>5</sup>${sortIndicator("Yield")}</button></th>
       <th>Primary</th>
       <th>Secondary</th>
     </tr>
@@ -374,10 +420,21 @@ function renderIssuerTable() {
         const marker = row.REPORT_SENTIMENT_COLOR
           ? `<sup class="sentiment-marker ${row.REPORT_SENTIMENT_COLOR}" title="${row.REPORT_SENTIMENT_LABEL || "Report sentiment"}"></sup>`
           : "";
-        const defaultedMarker = row.HAS_DEFAULTED ? `<sup class="defaulted-marker" title="Defaulted">D</sup>` : "";
-        return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${defaultedMarker}${marker}</button></td>`;
+        return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${marker}</button></td>`;
       }
-      if (column === "3M Price Move" || column === "7D Price Move") return `<td>${fmtPriceMove(value)}</td>`;
+      if (column === "3M MV Change ($MM)" || column === "7D MV Change ($MM)") {
+        if (value === null || value === undefined || value === 0) return `<td class="col-tight col-group-l col-group-r">-</td>`;
+        const v = Number(value);
+        const cls = v > 0 ? "positive" : v < 0 ? "negative" : "neutral";
+        const arrow = v > 0 ? "▲" : "▼";
+        return `<td class="col-tight col-group-l col-group-r price-move ${cls}">${arrow} ${fmt(Math.abs(v), 0)}</td>`;
+      }
+      if (column === "COVERAGE PRIMARY" || column === "COVERAGE SECONDARY") {
+        const slot = column === "COVERAGE PRIMARY" ? "primary" : "secondary";
+        const ticker = row.PARENT_TICKER;
+        const names = (state.coverageMap[ticker] || {})[slot] || [];
+        return `<td class="cov-cell">${renderCoverageCell(ticker, slot, names)}</td>`;
+      }
       return `<td>${fmtIssuer(column, value)}</td>`;
     }).join("");
     return `<tr class="${selected}">${cells}</tr>`;
@@ -510,6 +567,231 @@ function renderExclusionsTable() {
   exclusionsStatus.textContent = `${state.excludedRows.length} securities excluded from screening`;
 }
 
+const loanColumns = [
+  { key: "Issuer",             label: "Issuer" },
+  { key: "NAME",               label: "Security" },
+  { key: "SECTOR",             label: "Sector",       tdClass: "col-tight" },
+  { key: "AMT_OUTSTANDING_MM", label: "Amt Out",     sortable: true, tdClass: "col-tight col-group-l" },
+  { key: "PX_MID",             label: "Current Px",  tdClass: "col-tight col-group-l" },
+  { key: "YIELD",              label: "Yield",        tdClass: "col-tight" },
+  { key: "PRICE_MOVE_3M",      label: "3M Px Move",  sortable: true, tdClass: "col-tight col-group-l" },
+  { key: "PRICE_MOVE_7D",      label: "7D Px Move",  sortable: true, tdClass: "col-tight" },
+  { key: "MV_CHANGE_3M_MM",    label: "3M MV ($MM)", sortable: true, tdClass: "col-tight col-group-l" },
+  { key: "MV_CHANGE_7D_MM",    label: "7D MV ($MM)", sortable: true, tdClass: "col-tight" },
+  { key: "PRICE_RANGE",        label: "52W Range" },
+  { key: "COVERAGE_PRIMARY",   label: "Primary",     tdClass: "col-tight col-group-l" },
+  { key: "COVERAGE_SECONDARY", label: "Secondary",   tdClass: "col-tight" },
+];
+
+const LOAN_FILTER_DEFS = [
+  { id: "yieldMin", label: "Yield >", unit: "%", test: (row, v) => Number(row.YIELD) > v },
+  { id: "yieldMax", label: "Yield <", unit: "%", test: (row, v) => Number(row.YIELD) < v },
+  { id: "priceMax", label: "Price <", unit: "",  test: (row, v) => Number(row.PX_MID) < v },
+];
+
+const LOAN_ABS_SORT_FIELDS = new Set(["PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM"]);
+
+function renderLoanPriceRange(row) {
+  const low = Number(row.PX_LOW_52W);
+  const high = Number(row.PX_HIGH_52W);
+  const current = Number(row.PX_MID);
+  if (Number.isNaN(low) || Number.isNaN(high) || Number.isNaN(current) || high <= low) return "-";
+  const clamped = Math.min(Math.max(current, low), high);
+  const pct = ((clamped - low) / (high - low)) * 100;
+  return `
+    <div class="price-range-cell">
+      <span class="range-value low">${fmt(low, 1)}</span>
+      <div class="range-track"><span class="range-dot" style="left:${pct}%"></span></div>
+      <span class="range-value high">${fmt(high, 1)}</span>
+    </div>
+  `;
+}
+
+function renderLoanFilterChips() {
+  loanFilterChips.innerHTML = LOAN_FILTER_DEFS.map((def) => {
+    const active = state.loanActiveFilters[def.id];
+    const val = state.loanFilterValues[def.id];
+    const unit = def.unit ? `<span class="chip-unit">${def.unit}</span>` : "";
+    if (active) {
+      return `<span class="filter-chip active">
+        ${def.label}
+        <input class="chip-val-input" type="number" data-filter-id="${def.id}" value="${val}" step="any" />
+        ${unit}
+        <button class="chip-remove" data-filter-id="${def.id}" type="button" title="Remove">×</button>
+      </span>`;
+    }
+    return `<span class="filter-chip inactive-chip">
+      ${def.label}
+      <input class="chip-val-input chip-val-inactive" type="number" data-filter-id="${def.id}" value="${val}" step="any" />
+      ${unit}
+      <button class="chip-add" data-filter-id="${def.id}" type="button" title="Add filter">+</button>
+    </span>`;
+  }).join("");
+
+  loanFilterChips.querySelectorAll(".chip-val-input:not(.chip-val-inactive)").forEach((input) => {
+    input.addEventListener("change", () => {
+      const v = parseFloat(input.value);
+      if (!Number.isNaN(v)) { state.loanFilterValues[input.dataset.filterId] = v; applyLoansFilter(); }
+    });
+  });
+
+  loanFilterChips.querySelectorAll(".chip-remove").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.loanActiveFilters[btn.dataset.filterId] = false;
+      applyLoansFilter();
+    });
+  });
+
+  loanFilterChips.querySelectorAll(".chip-add").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.filterId;
+      const input = loanFilterChips.querySelector(`.chip-val-input[data-filter-id="${id}"]`);
+      const v = parseFloat(input?.value);
+      if (!Number.isNaN(v)) state.loanFilterValues[id] = v;
+      state.loanActiveFilters[id] = true;
+      applyLoansFilter();
+    });
+  });
+}
+
+function updateLoanScreenButton() {
+  const topN = parseInt(loanTopNInput.value, 10) || 50;
+  loanScreenButton.textContent = state.loanScreened
+    ? `Screened: Top ${topN} ✓`
+    : `Screen: Top ${topN}`;
+  loanScreenButton.classList.toggle("btn-on", state.loanScreened);
+  loanScreenButton.classList.toggle("secondary", !state.loanScreened);
+}
+
+function applyLoansFilter() {
+  const search = loansSearchInput.value.trim().toLowerCase();
+  let rows = search
+    ? state.loanRows.filter((row) =>
+        String(row.Issuer || "").toLowerCase().includes(search) ||
+        String(row.PARENT_TICKER || "").toLowerCase().includes(search) ||
+        String(row.NAME || "").toLowerCase().includes(search)
+      )
+    : [...state.loanRows];
+
+  LOAN_FILTER_DEFS.forEach((def) => {
+    if (state.loanActiveFilters[def.id]) {
+      const v = state.loanFilterValues[def.id];
+      rows = rows.filter((row) => def.test(row, v));
+    }
+  });
+
+  if (state.loanScreened) {
+    rows = rows.filter((row) => Number(row.YIELD) >= 9 && Number(row.AMT_OUTSTANDING_MM) >= 200);
+  }
+
+  const sf = state.loanSortField;
+  const asc = state.loanSortDirection === "asc";
+  rows.sort((a, b) => {
+    let av = Number(a[sf]);
+    let bv = Number(b[sf]);
+    if (LOAN_ABS_SORT_FIELDS.has(sf)) {
+      av = Number.isNaN(av) ? -Infinity : Math.abs(av);
+      bv = Number.isNaN(bv) ? -Infinity : Math.abs(bv);
+    } else {
+      av = Number.isNaN(av) ? -Infinity : av;
+      bv = Number.isNaN(bv) ? -Infinity : bv;
+    }
+    return asc ? av - bv : bv - av;
+  });
+
+  const topN = parseInt(loanTopNInput.value, 10);
+  if (!Number.isNaN(topN) && topN > 0) rows = rows.slice(0, topN);
+
+  state.filteredLoanRows = rows;
+  clearLoansSearchButton.classList.toggle("hidden", !loansSearchInput.value);
+  const screenNote = state.loanScreened ? " — Yield ≥9%, Tranche ≥$200M" : "";
+  loansStatus.textContent = `${rows.length} loan instrument${rows.length !== 1 ? "s" : ""}${screenNote}`;
+  renderLoanFilterChips();
+  updateLoanScreenButton();
+  renderLoansTable();
+}
+
+function loanSortIndicator(key) {
+  if (state.loanSortField !== key) return "";
+  return state.loanSortDirection === "asc" ? " &uarr;" : " &darr;";
+}
+
+function renderLoansTable() {
+  loansHead.innerHTML = `
+    <tr class="header-group-row">
+      <th></th>
+      <th></th>
+      <th></th>
+      <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">(In $ Millions)</em></th>
+      <th colspan="2" class="group-header col-group-l">Price &amp; Yield</th>
+      <th colspan="2" class="group-header col-group-l">Px Move</th>
+      <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">(In $ Millions)</em></th>
+      <th></th>
+      <th colspan="2" class="group-header col-group-l">Coverage</th>
+    </tr>
+    <tr>
+      <th class="col-fit">Issuer</th>
+      <th class="col-fit">Security</th>
+      <th class="col-tight">Sector</th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header loan-sort-header" data-loan-sort="AMT_OUTSTANDING_MM">Amt Out${loanSortIndicator("AMT_OUTSTANDING_MM")}</button></th>
+      <th class="col-tight col-group-l">Current Px</th>
+      <th class="col-tight">Yield</th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header loan-sort-header" data-loan-sort="PRICE_MOVE_3M">3M${loanSortIndicator("PRICE_MOVE_3M")}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header loan-sort-header" data-loan-sort="PRICE_MOVE_7D">7D${loanSortIndicator("PRICE_MOVE_7D")}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header loan-sort-header" data-loan-sort="MV_CHANGE_3M_MM">3M${loanSortIndicator("MV_CHANGE_3M_MM")}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header loan-sort-header" data-loan-sort="MV_CHANGE_7D_MM">7D${loanSortIndicator("MV_CHANGE_7D_MM")}</button></th>
+      <th>52W Range</th>
+      <th class="col-tight col-group-l">Primary</th>
+      <th class="col-tight">Secondary</th>
+    </tr>
+  `;
+
+  loansBody.innerHTML = state.filteredLoanRows.map((row) => {
+    const cells = loanColumns.map((col) => {
+      const cls = col.tdClass ? ` class="${col.tdClass}"` : "";
+      if (col.key === "PRICE_RANGE") return `<td${cls}>${renderLoanPriceRange(row)}</td>`;
+      if (col.key === "PRICE_MOVE_3M") return `<td${cls}>${fmtPriceMove(row.PRICE_MOVE_3M)}</td>`;
+      if (col.key === "PRICE_MOVE_7D") return `<td${cls}>${fmtPriceMove(row.PRICE_MOVE_7D)}</td>`;
+      if (col.key === "MV_CHANGE_3M_MM" || col.key === "MV_CHANGE_7D_MM") {
+        const v = Number(row[col.key]);
+        if (!row[col.key] || Number.isNaN(v) || v === 0) return `<td${cls}>-</td>`;
+        const mvCls = v > 0 ? "positive" : "negative";
+        const arrow = v > 0 ? "▲" : "▼";
+        return `<td class="${(col.tdClass || "")} price-move ${mvCls}">${arrow} ${fmt(Math.abs(v), 0)}</td>`;
+      }
+      if (col.key === "AMT_OUTSTANDING_MM") return `<td${cls}>${fmt(row[col.key], 0)}</td>`;
+      if (col.key === "PX_MID") return `<td${cls}>${fmt(row[col.key], 2)}</td>`;
+      if (col.key === "YIELD") return `<td${cls}>${fmt(row[col.key], 2)}</td>`;
+      if (col.key === "NAME") {
+        const text = row[col.key] != null ? row[col.key] : "-";
+        return `<td${cls}>${text}</td>`;
+      }
+      if (col.key === "COVERAGE_PRIMARY" || col.key === "COVERAGE_SECONDARY") {
+        const slot = col.key === "COVERAGE_PRIMARY" ? "primary" : "secondary";
+        const ticker = row.PARENT_TICKER;
+        const names = (state.coverageMap[ticker] || {})[slot] || [];
+        return `<td${cls}>${renderCoverageCell(ticker, slot, names)}</td>`;
+      }
+      return `<td${cls}>${row[col.key] != null ? row[col.key] : "-"}</td>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+
+  document.querySelectorAll("[data-loan-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const col = btn.dataset.loanSort;
+      if (state.loanSortField === col) {
+        state.loanSortDirection = state.loanSortDirection === "asc" ? "desc" : "asc";
+      } else {
+        state.loanSortField = col;
+        state.loanSortDirection = "desc";
+      }
+      applyLoansFilter();
+    });
+  });
+}
+
 function setExceptionsSubtab(tabName) {
   abnormalPriceSubtabButton.classList.toggle("active", tabName === "abnormal-price");
   exclusionsSubtabButton.classList.toggle("active", tabName === "exclusions");
@@ -577,14 +859,17 @@ function applyMoversFilters() {
 
 function setActiveTab(tabName) {
   const issuerActive = tabName === "issuer";
+  const loansActive = tabName === "loans";
   const moversActive = tabName === "movers";
   const exceptionsActive = tabName === "exceptions";
   const documentationActive = tabName === "documentation";
   issuerTabButton.classList.toggle("active", issuerActive);
+  loansTabButton.classList.toggle("active", loansActive);
   moversTabButton.classList.toggle("active", moversActive);
   exceptionsTabButton.classList.toggle("active", exceptionsActive);
   documentationTabButton.classList.toggle("active", documentationActive);
   issuerTabPanel.classList.toggle("hidden", !issuerActive);
+  loansTabPanel.classList.toggle("hidden", !loansActive);
   moversTabPanel.classList.toggle("hidden", !moversActive);
   exceptionsTabPanel.classList.toggle("hidden", !exceptionsActive);
   documentationTabPanel.classList.toggle("hidden", !documentationActive);
@@ -623,7 +908,6 @@ function applyFilters() {
   if (state.selectedIssuer && !rows.some((row) => row.PARENT_TICKER === state.selectedIssuer)) {
     state.selectedIssuer = null;
     detailCard.classList.add("hidden");
-    reportSummaryCard.classList.add("hidden");
   } else if (state.selectedIssuer) {
     renderIssuerDetail(state.selectedIssuer);
     return;
@@ -631,48 +915,88 @@ function applyFilters() {
   renderIssuerTable();
 }
 
-function renderIssuerDetail(parentTicker) {
-  const anchorDate = state.metadata.anchor_date ? new Date(state.metadata.anchor_date) : null;
-  const minMaturity = anchorDate ? new Date(anchorDate) : null;
-  if (minMaturity) minMaturity.setFullYear(minMaturity.getFullYear() + 1);
-  const rows = (state.instrumentMap.get(parentTicker) || []).filter((row) => {
-    if (row._IS_DEFAULTED) return false;
-    const rowYield = Number(row.YIELD);
-    const rowAmount = Number(row.AMT_OUTSTANDING_MM);
-    const rankText = String(row.PAYMENT_RANK || "").toLowerCase();
-    const isPreferred = rankText === "preferred";
-    const rowPx = Number(row.PX_MID);
-    const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
-    const maturityEligible = !minMaturity || (maturity instanceof Date && !Number.isNaN(maturity.getTime()) && maturity > minMaturity);
-    if (isPreferred) return rowYield >= 7 && rowAmount >= 200 && rowPx < 90 && maturityEligible;
-    return rowYield >= 7 && rowAmount >= 200 && rowPx < 90 && maturityEligible && !rankText.includes("subordinated");
-  });
-  rows.sort((a, b) => {
-    const aSecured = String(a.PAYMENT_RANK || "").toLowerCase().includes("secured") && !String(a.PAYMENT_RANK || "").toLowerCase().includes("unsecured");
-    const bSecured = String(b.PAYMENT_RANK || "").toLowerCase().includes("secured") && !String(b.PAYMENT_RANK || "").toLowerCase().includes("unsecured");
-    if (aSecured !== bSecured) return aSecured ? -1 : 1;
-    return (Number(b.AMT_OUTSTANDING_MM) || 0) - (Number(a.AMT_OUTSTANDING_MM) || 0);
-  });
-  state.detailRows = rows;
-  const issuer = state.issuers.find((row) => row.PARENT_TICKER === parentTicker);
-  state.selectedIssuer = parentTicker;
-  detailCard.classList.remove("hidden");
-  detailTicker.textContent = parentTicker;
-  detailTitle.textContent = issuer?.Issuer || parentTicker;
-  if (issuer?.REPORT_SUMMARY_BULLETS?.length) {
-    reportSummaryCard.classList.remove("hidden");
-    reportMeta.textContent = issuer.REPORT_DATE ? `Report date: ${issuer.REPORT_DATE}` : "";
-    reportBullets.innerHTML = issuer.REPORT_SUMMARY_BULLETS.map((bullet) => `<li>${bullet}</li>`).join("");
-  } else {
-    reportSummaryCard.classList.add("hidden");
-    reportMeta.textContent = "";
-    reportBullets.innerHTML = "";
+function isQualifyingRow(row, minMaturity) {
+  if (row._IS_DEFAULTED) return false;
+  const rowYield = Number(row.YIELD);
+  const rowPx = Number(row.PX_MID);
+  const isLoan = row.LOAN_TYPE != null && row.LOAN_TYPE !== "";
+  if (isLoan) return rowYield > 9 && rowYield < 50 && rowPx < 95;
+  const rowAmount = Number(row.AMT_OUTSTANDING_MM);
+  const rankText = String(row.PAYMENT_RANK || "").toLowerCase();
+  const isPreferred = rankText === "preferred";
+  const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
+  const maturityEligible = !minMaturity || !maturity || (maturity instanceof Date && !Number.isNaN(maturity.getTime()) && maturity > minMaturity);
+  if (!maturityEligible || rowAmount < 200) return false;
+  if (isPreferred) return rowYield > 10 && rowYield < 50 && rowPx < 100;
+  return rowYield > 10 && rowYield < 50 && rowPx < 100 && !rankText.includes("subordinated");
+}
+
+function getExclusionReasons(row, minMaturity) {
+  const reasons = [];
+  const rawYield = row.YIELD;
+  const rawPx = row.PX_MID;
+  const yieldMissing = rawYield === null || rawYield === undefined || rawYield === "";
+  const pxMissing = rawPx === null || rawPx === undefined || rawPx === "";
+  const rowYield = Number(rawYield);
+  const rowPx = Number(rawPx);
+  const rowAmount = Number(row.AMT_OUTSTANDING_MM);
+  const isLoan = row.LOAN_TYPE != null && row.LOAN_TYPE !== "";
+  if (isLoan) {
+    if (rowAmount < 200) reasons.push("Size < $200M");
+    if (yieldMissing) reasons.push("No yield data");
+    else if (rowYield <= 9) reasons.push("Yield below threshold");
+    else if (rowYield >= 50) reasons.push("Yield out of range");
+    if (!pxMissing && rowPx >= 95) reasons.push("Price ≥95");
+    return reasons.join("; ") || "Other";
   }
-  detailHead.innerHTML = `<tr>${detailColumns.map((column) => {
-    const sup = column.key === "LAST_30D_VOLUME_MM" ? "<sup>7</sup>" : "";
+  const rankText = String(row.PAYMENT_RANK || "").toLowerCase();
+  const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
+  const maturityEligible = !minMaturity || !maturity || (maturity instanceof Date && !Number.isNaN(maturity.getTime()) && maturity > minMaturity);
+  if (!maturityEligible) reasons.push("Maturity < 1Y");
+  if (rowAmount < 200) reasons.push("Size < $200M");
+  if (rankText.includes("subordinated")) reasons.push("Subordinated");
+  if (yieldMissing) reasons.push("No yield data");
+  else if (rowYield <= 10) reasons.push("Yield below threshold");
+  else if (rowYield >= 50) reasons.push("Yield out of range");
+  if (!pxMissing && rowPx >= 100) reasons.push("Price ≥ Par");
+  return reasons.join("; ") || "Other";
+}
+
+function renderNonQualifyingHead() {
+  return `<tr>${detailColumns.map((column) => {
+    const sup = column.key === "LAST_30D_VOLUME_MM" ? "<sup>6</sup>" : "";
     return `<th>${column.label}${sup}</th>`;
-  }).join("")}</tr>`;
-  detailBody.innerHTML = rows.map((row) => {
+  }).join("")}<th>Exclusion Reason</th></tr>`;
+}
+
+function renderNonQualifyingRows(rows, minMaturity) {
+  return rows.map((row) => {
+    const cells = detailColumns.map((column) => {
+      const value = row[column.key];
+      if (column.key === "NAME") {
+        const bbgId = row.ID || "";
+        return `<td title="${bbgId}">${fmt(value, 2)}</td>`;
+      }
+      if (column.key === "PRICE_MOVE_3M") return `<td>${renderPriceMove(row)}</td>`;
+      if (column.key === "PRICE_MOVE_7D") return `<td>${renderPriceMove7D(row)}</td>`;
+      if (column.key === "PRICE_RANGE") return `<td>${renderPriceRange(row)}</td>`;
+      const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
+      return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
+    }).join("");
+    const reason = getExclusionReasons(row, minMaturity);
+    return `<tr>${cells}<td class="exclusion-reason-cell">${reason}</td></tr>`;
+  }).join("");
+}
+
+function detailSortFn(a, b) {
+  const aSecured = String(a.PAYMENT_RANK || "").toLowerCase().includes("secured") && !String(a.PAYMENT_RANK || "").toLowerCase().includes("unsecured");
+  const bSecured = String(b.PAYMENT_RANK || "").toLowerCase().includes("secured") && !String(b.PAYMENT_RANK || "").toLowerCase().includes("unsecured");
+  if (aSecured !== bSecured) return aSecured ? -1 : 1;
+  return (Number(b.AMT_OUTSTANDING_MM) || 0) - (Number(a.AMT_OUTSTANDING_MM) || 0);
+}
+
+function renderDetailRows(rows) {
+  return rows.map((row) => {
     const cells = detailColumns.map((column) => {
       const value = row[column.key];
       if (column.key === "NAME") {
@@ -688,30 +1012,50 @@ function renderIssuerDetail(parentTicker) {
     }).join("");
     return `<tr>${cells}</tr>`;
   }).join("");
+}
 
-  // Defaulted bonds table
-  const defaultedRows = (state.instrumentMap.get(parentTicker) || []).filter((row) => row._IS_DEFAULTED);
+function renderDetailHead() {
+  return `<tr>${detailColumns.map((column) => {
+    const sup = column.key === "LAST_30D_VOLUME_MM" ? "<sup>6</sup>" : "";
+    return `<th>${column.label}${sup}</th>`;
+  }).join("")}</tr>`;
+}
+
+function renderIssuerDetail(parentTicker) {
+  const anchorDate = state.metadata.anchor_date ? new Date(state.metadata.anchor_date) : null;
+  const minMaturity = anchorDate ? new Date(anchorDate) : null;
+  if (minMaturity) minMaturity.setFullYear(minMaturity.getFullYear() + 1);
+
+  const allRows = state.instrumentMap.get(parentTicker) || [];
+  const rows = allRows.filter((row) => isQualifyingRow(row, minMaturity)).sort(detailSortFn);
+  const nonQualRows = allRows.filter((row) => !row._IS_DEFAULTED && !isQualifyingRow(row, minMaturity)).sort(detailSortFn);
+  const defaultedRows = allRows.filter((row) => row._IS_DEFAULTED);
+
+  state.detailRows = rows;
+  const issuer = state.issuers.find((row) => row.PARENT_TICKER === parentTicker);
+  state.selectedIssuer = parentTicker;
+  detailCard.classList.remove("hidden");
+  detailToggleBar.classList.remove("hidden");
+  hideDetailButton.innerHTML = "&#x25BC; Hide Detail";
+  detailTicker.textContent = parentTicker;
+  detailTitle.textContent = issuer?.Issuer || parentTicker;
+  detailHead.innerHTML = renderDetailHead();
+  detailBody.innerHTML = renderDetailRows(rows);
+
+  // Non-qualifying securities section
+  if (nonQualRows.length > 0) {
+    nonQualifyingCard.classList.remove("hidden");
+    nonQualifyingHead.innerHTML = renderNonQualifyingHead();
+    nonQualifyingBody.innerHTML = renderNonQualifyingRows(nonQualRows, minMaturity);
+  } else {
+    nonQualifyingCard.classList.add("hidden");
+  }
+
+  // Defaulted bonds section
   if (defaultedRows.length > 0) {
     defaultedCard.classList.remove("hidden");
-    defaultedHead.innerHTML = `<tr>${detailColumns.map((column) => {
-      const sup = column.key === "LAST_30D_VOLUME_MM" ? "<sup>7</sup>" : "";
-      return `<th>${column.label}${sup}</th>`;
-    }).join("")}</tr>`;
-    defaultedBody.innerHTML = defaultedRows.map((row) => {
-      const cells = detailColumns.map((column) => {
-        const value = row[column.key];
-        if (column.key === "NAME") {
-          const bbgId = row.ID || "";
-          return `<td title="${bbgId}">${fmt(value, 2)}<sup class="defaulted-marker" title="Defaulted">D</sup></td>`;
-        }
-        if (column.key === "PRICE_MOVE_3M") return `<td>${renderPriceMove(row)}</td>`;
-        if (column.key === "PRICE_MOVE_7D") return `<td>${renderPriceMove7D(row)}</td>`;
-        if (column.key === "PRICE_RANGE") return `<td>${renderPriceRange(row)}</td>`;
-        const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
-        return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
-      }).join("");
-      return `<tr>${cells}</tr>`;
-    }).join("");
+    defaultedHead.innerHTML = renderDetailHead();
+    defaultedBody.innerHTML = renderDetailRows(defaultedRows);
   } else {
     defaultedCard.classList.add("hidden");
   }
@@ -730,11 +1074,13 @@ async function openIssuerDetail(parentTicker) {
 
 async function loadDashboard() {
   setLoading(true, "Loading...");
-  const [dashboardPayload, moversPayload, abnormalPricesPayload, excludedPayload] = await Promise.all([
+  const [dashboardPayload, moversPayload, abnormalPricesPayload, excludedPayload, loansPayload, coveragePayload] = await Promise.all([
     fetchJson("/api/dashboard"),
     fetchJson("/api/price-movers"),
     fetchJson("/api/abnormal-prices"),
     fetchJson("/api/excluded"),
+    fetchJson("/api/loans"),
+    fetchJson("/api/coverage"),
   ]);
   state.issuers = dashboardPayload.issuers;
   state.filters = dashboardPayload.filters;
@@ -743,7 +1089,6 @@ async function loadDashboard() {
   state.instrumentMap = new Map();
   state.detailRows = [];
   detailCard.classList.add("hidden");
-  reportSummaryCard.classList.add("hidden");
   sectorFilter.innerHTML = `<option value="All">All</option>${dashboardPayload.filters.sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join("")}`;
   state.rawMoversRows = moversPayload.rows.map((row) => ({ ...row, "Price Range": "" }));
   state.abnormalPriceRows = abnormalPricesPayload.rows.map((row) => ({
@@ -761,8 +1106,11 @@ async function loadDashboard() {
     "52W High": row.PX_HIGH_52W,
   }));
   state.excludedRows = excludedPayload.rows;
+  state.loanRows = loansPayload.rows;
+  state.coverageMap = coveragePayload.coverages || {};
   applyFilters();
   applyMoversFilters();
+  applyLoansFilter();
   renderAbnormalPriceTable();
   setLoading(false);
 }
@@ -808,6 +1156,7 @@ logoutButton.addEventListener("click", async () => {
 });
 
 issuerTabButton.addEventListener("click", () => setActiveTab("issuer"));
+loansTabButton.addEventListener("click", () => setActiveTab("loans"));
 moversTabButton.addEventListener("click", () => setActiveTab("movers"));
 exceptionsTabButton.addEventListener("click", () => setActiveTab("exceptions"));
 documentationTabButton.addEventListener("click", () => setActiveTab("documentation"));
@@ -837,8 +1186,50 @@ clearSearchButton.addEventListener("click", () => {
   searchInput.focus();
 });
 
+loansSearchInput.addEventListener("input", applyLoansFilter);
+clearLoansSearchButton.addEventListener("click", () => {
+  loansSearchInput.value = "";
+  applyLoansFilter();
+  loansSearchInput.focus();
+});
+
+loanTopNInput.addEventListener("input", () => {
+  updateLoanScreenButton();
+  applyLoansFilter();
+});
+
+loanScreenButton.addEventListener("click", () => {
+  state.loanScreened = !state.loanScreened;
+  applyLoansFilter();
+});
+
+reloadDataButton.addEventListener("click", async () => {
+  reloadDataButton.disabled = true;
+  reloadDataButton.textContent = "Reloading...";
+  try {
+    await fetchJson("/api/admin/reload", { method: "POST" });
+    await loadDashboard();
+  } catch (error) {
+    statusBar.textContent = error.message;
+  } finally {
+    reloadDataButton.disabled = false;
+    reloadDataButton.textContent = "Reload Data";
+  }
+});
+
 downloadIssuersButton.addEventListener("click", async () => {
-  await downloadExcel("/api/export/issuers", { rows: state.filteredIssuers });
+  await downloadExcel("/api/export/issuers", {
+    rows: state.filteredIssuers.slice(0, 50),
+    upsideMode: state.upsideMode,
+  });
+});
+
+hideDetailButton.addEventListener("click", () => {
+  const hiding = !detailCard.classList.contains("hidden");
+  detailCard.classList.toggle("hidden", hiding);
+  nonQualifyingCard.classList.toggle("hidden", hiding);
+  defaultedCard.classList.toggle("hidden", hiding);
+  hideDetailButton.innerHTML = hiding ? "&#x25B2; Show Detail" : "&#x25BC; Hide Detail";
 });
 
 downloadDetailButton.addEventListener("click", async () => {
@@ -860,5 +1251,120 @@ document.getElementById("glossaryButton").addEventListener("click", () => {
     if (!popup.contains(ev.target) && ev.target.id !== "glossaryButton") popup.remove();
   }, { once: true }), 0);
 });
+
+// ── Coverage dropdown ──────────────────────────────────────────────────────
+const coverageDropdown = document.createElement("div");
+coverageDropdown.className = "coverage-dropdown hidden";
+document.body.appendChild(coverageDropdown);
+
+let _covTicker = null;
+let _covSlot = null;
+
+function showCoverageDropdown(ticker, slot, anchorEl) {
+  _covTicker = ticker;
+  _covSlot = slot;
+  const entry = state.coverageMap[ticker] || { primary: [], secondary: [] };
+  const current = entry[slot] || [];
+  const available = COVERAGE_ANALYSTS.filter((n) => !current.includes(n));
+  if (!available.length) { hideCoverageDropdown(); return; }
+  coverageDropdown.innerHTML = available.map((name) =>
+    `<div class="cov-option" data-name="${name.replace(/"/g, "&quot;")}">${name}</div>`
+  ).join("");
+  const rect = anchorEl.getBoundingClientRect();
+  coverageDropdown.style.top = `${rect.bottom + window.scrollY + 2}px`;
+  coverageDropdown.style.left = `${rect.left + window.scrollX}px`;
+  coverageDropdown.classList.remove("hidden");
+}
+
+function hideCoverageDropdown() {
+  coverageDropdown.classList.add("hidden");
+  _covTicker = null;
+  _covSlot = null;
+}
+
+function saveCoverage(ticker) {
+  const entry = state.coverageMap[ticker] || { primary: [], secondary: [] };
+  fetch("/api/coverage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ticker, primary: entry.primary || [], secondary: entry.secondary || [] }),
+  }).catch(() => {});
+}
+
+coverageDropdown.addEventListener("click", (e) => {
+  const opt = e.target.closest(".cov-option");
+  if (!opt || !_covTicker) return;
+  const name = opt.dataset.name;
+  if (!state.coverageMap[_covTicker]) state.coverageMap[_covTicker] = { primary: [], secondary: [] };
+  const arr = state.coverageMap[_covTicker][_covSlot];
+  if (arr.length < 2 && !arr.includes(name)) {
+    arr.push(name);
+    updateCoverageCells(_covTicker);
+    renderLoansTable();
+    saveCoverage(_covTicker);
+  }
+  hideCoverageDropdown();
+});
+
+issuerBody.addEventListener("click", (e) => {
+  const addBtn = e.target.closest(".cov-add");
+  if (addBtn) {
+    e.stopPropagation();
+    const { ticker, slot } = addBtn.dataset;
+    if (!coverageDropdown.classList.contains("hidden") && _covTicker === ticker && _covSlot === slot) {
+      hideCoverageDropdown();
+    } else {
+      showCoverageDropdown(ticker, slot, addBtn);
+    }
+    return;
+  }
+  const nameSpan = e.target.closest(".cov-name");
+  if (nameSpan) {
+    e.stopPropagation();
+    const { ticker, slot, idx } = nameSpan.dataset;
+    if (state.coverageMap[ticker]) {
+      state.coverageMap[ticker][slot].splice(Number(idx), 1);
+      updateCoverageCells(ticker);
+      renderLoansTable();
+      saveCoverage(ticker);
+    }
+    hideCoverageDropdown();
+  }
+});
+
+loansBody.addEventListener("click", (e) => {
+  const addBtn = e.target.closest(".cov-add");
+  if (addBtn) {
+    e.stopPropagation();
+    const { ticker, slot } = addBtn.dataset;
+    if (!coverageDropdown.classList.contains("hidden") && _covTicker === ticker && _covSlot === slot) {
+      hideCoverageDropdown();
+    } else {
+      showCoverageDropdown(ticker, slot, addBtn);
+    }
+    return;
+  }
+  const nameSpan = e.target.closest(".cov-name");
+  if (nameSpan) {
+    e.stopPropagation();
+    const { ticker, slot, idx } = nameSpan.dataset;
+    if (state.coverageMap[ticker]) {
+      state.coverageMap[ticker][slot].splice(Number(idx), 1);
+      updateCoverageCells(ticker);
+      renderLoansTable();
+      saveCoverage(ticker);
+    }
+    hideCoverageDropdown();
+  }
+});
+
+document.addEventListener("click", (e) => {
+  if (!coverageDropdown.classList.contains("hidden") &&
+      !coverageDropdown.contains(e.target) &&
+      !e.target.closest(".cov-add")) {
+    hideCoverageDropdown();
+  }
+});
+// ────────────────────────────────────────────────────────────────────────────
 
 checkSession();

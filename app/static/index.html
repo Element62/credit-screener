@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Credit Screener</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260423g" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260616d" />
   </head>
   <body>
     <div class="page-shell">
@@ -34,6 +34,7 @@
         <section class="card">
           <div class="tab-strip">
             <button id="issuerTabButton" type="button" class="tab-button active">Issuer Screen</button>
+            <button id="loansTabButton" type="button" class="tab-button">Loans</button>
             <button id="moversTabButton" type="button" class="tab-button">Price Movers</button>
             <button id="documentationTabButton" type="button" class="tab-button">Documentation</button>
             <button id="exceptionsTabButton" type="button" class="tab-button">Exceptions</button>
@@ -54,6 +55,7 @@
               <label>Sector<select id="sectorFilter"><option value="All">All</option></select></label>
             </div>
             <div class="toolbar-group">
+              <button id="reloadDataButton" type="button" class="secondary">Reload Data</button>
               <button id="downloadIssuersButton" type="button" class="secondary">Download Issuer View</button>
               <button id="glossaryButton" type="button" class="secondary glossary-btn">i</button>
             </div>
@@ -70,15 +72,9 @@
           </div>
         </section>
 
-        <section id="reportSummaryCard" class="card report-summary hidden">
-          <div class="detail-header">
-            <div>
-              <p class="eyebrow">Latest Report Summary</p>
-              <p id="reportMeta" class="status-bar"></p>
-            </div>
-          </div>
-          <ul id="reportBullets" class="report-bullets"></ul>
-        </section>
+        <div id="detailToggleBar" class="detail-toggle-bar hidden">
+          <button id="hideDetailButton" type="button" class="secondary detail-toggle-btn">&#x25BC; Hide Detail</button>
+        </div>
 
         <section id="detailCard" class="card hidden">
           <div class="detail-header">
@@ -98,6 +94,20 @@
           </div>
         </section>
 
+        <section id="nonQualifyingCard" class="card hidden">
+          <div class="detail-header">
+            <div>
+              <p class="eyebrow">Other Securities</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead id="nonQualifyingHead"></thead>
+              <tbody id="nonQualifyingBody"></tbody>
+            </table>
+          </div>
+        </section>
+
         <section id="defaultedCard" class="card hidden">
           <div class="detail-header">
             <div>
@@ -111,6 +121,40 @@
             </table>
           </div>
         </section>
+        </div>
+
+        <div id="loansTabPanel" class="hidden">
+          <section class="card">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">Loan Instruments</p>
+                <p id="loansStatus" class="status-bar"></p>
+              </div>
+              <div class="toolbar-group">
+                <label>Search
+                  <div class="search-field">
+                    <input id="loansSearchInput" type="text" placeholder="Issuer or security name" />
+                    <button id="clearLoansSearchButton" type="button" class="clear-search hidden" aria-label="Clear search">X</button>
+                  </div>
+                </label>
+                <label>Top N
+                  <input id="loanTopNInput" type="number" min="1" value="50" class="top-n-input" />
+                </label>
+                <label>&nbsp;
+                  <button id="loanScreenButton" type="button" class="secondary">Screen: Top 50</button>
+                </label>
+              </div>
+            </div>
+            <div id="loanFilterChips" class="loan-filter-chips"></div>
+          </section>
+          <section class="card">
+            <div class="table-wrap">
+              <table>
+                <thead id="loansHead"></thead>
+                <tbody id="loansBody"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
 
         <div id="moversTabPanel" class="hidden">
@@ -290,6 +334,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260423g"></script>
+    <script src="/static/app.js?v=20260616h"></script>
   </body>
 </html>
