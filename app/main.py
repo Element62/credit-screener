@@ -484,6 +484,218 @@ def export_detail(payload: dict = Body(...), _: str = Depends(get_current_user))
     return build_excel_response(rows, f"{safe_name}.xlsx", "Detail")
 
 
+# ---------------------------------------------------------------------------
+# Loans export – themed (dark navy / light blue, matching PDF package aesthetic)
+# ---------------------------------------------------------------------------
+_LOAN_NAVY = "1F3864"
+_LOAN_ALT_ROW = "D9E1F2"
+_LOAN_DIVIDER = "4472C4"
+
+def build_loans_excel_response(rows: list[dict], metadata: dict | None = None) -> StreamingResponse:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Loan Instruments"
+
+    anchor_date = (metadata or {}).get("anchor_date", "")
+
+    # (data_key, header_label, col_width, h_align)
+    COLS = [
+        ("#",                "#",                4,  "center"),
+        ("PARENT_TICKER",    "Ticker",           7,  "center"),
+        ("Issuer",           "Issuer Name",     22,  "left"),
+        ("NAME",             "Loan Description",30,  "left"),
+        ("LOAN_TYPE",        "Type",             7,  "center"),
+        ("PAYMENT_RANK",     "Lien",             7,  "center"),
+        ("SECTOR",           "Sector",          11,  "left"),
+        ("AMT_OUTSTANDING_MM","Size ($MM)",       9,  "right"),
+        ("MATURITY",         "Maturity",         9,  "center"),
+        ("PX_MID",           "Mid Price",        8,  "right"),
+        ("YIELD",            "Yld to Mty",       8,  "right"),
+        ("PRICE_MOVE_3M",    "3M Px Chg",        8,  "right"),
+        ("PRICE_MOVE_7D",    "7D Px Chg",        8,  "right"),
+        ("MV_CHANGE_3M_MM",  "3M MV ($MM)",      9,  "right"),
+        ("MV_CHANGE_7D_MM",  "7D MV ($MM)",      9,  "right"),
+        ("PX_LOW_52W",       "52W Low",          7,  "right"),
+        ("PX_HIGH_52W",      "52W High",         7,  "right"),
+    ]
+    n_cols = len(COLS)
+
+    hdr_fill = PatternFill("solid", fgColor=_LOAN_NAVY)
+    alt_fill = PatternFill("solid", fgColor=_LOAN_ALT_ROW)
+    white_fill = PatternFill("solid", fgColor="FFFFFF")
+    hdr_font = Font(name="Calibri", bold=True, color="FFFFFF", size=9)
+    data_font = Font(name="Calibri", size=9)
+    bold_font = Font(name="Calibri", size=9, bold=True)
+
+    c_al = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    l_al = Alignment(horizontal="left", vertical="center")
+    r_al = Alignment(horizontal="right", vertical="center")
+    def _al(h): return c_al if h == "center" else (l_al if h == "left" else r_al)
+
+    no_s = Side(style=None)
+    thin_bot = Side(style="thin", color="B8CCE4")
+    div_l = Side(style="thin", color=_LOAN_DIVIDER)
+
+    # Groups for row 2: (start_col, end_col, label)
+    GROUPS = [
+        (1,  7,  ""),
+        (8,  11, "Illustrative"),
+        (12, 13, "Price Movement"),
+        (14, 15, "MV Change ($MM)"),
+        (16, 17, "52W Range"),
+    ]
+    group_starts = {g[0] for g in GROUPS if g[2]}
+
+    # ── Row 1: title banner ───────────────────────────────────────────────
+    title_text = f"Loan Instruments{'  |  As of ' + anchor_date if anchor_date else ''}"
+    tc = ws.cell(row=1, column=1, value=title_text)
+    tc.font = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+    tc.fill = hdr_fill
+    tc.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols)
+    for col in range(2, n_cols + 1):
+        ws.cell(row=1, column=col).fill = hdr_fill
+    ws.row_dimensions[1].height = 22
+
+    # ── Row 2: group headers ──────────────────────────────────────────────
+    for start, end, label in GROUPS:
+        gc = ws.cell(row=2, column=start, value=label)
+        gc.font = hdr_font
+        gc.fill = hdr_fill
+        gc.alignment = c_al
+        if end > start:
+            ws.merge_cells(start_row=2, start_column=start, end_row=2, end_column=end)
+    for col in range(1, n_cols + 1):
+        gc = ws.cell(row=2, column=col)
+        if gc.value is None:
+            gc.fill = hdr_fill
+        gc.border = Border(
+            bottom=Side(style="thin", color="4A6FA5"),
+            left=div_l if col in group_starts else no_s,
+            right=no_s, top=no_s,
+        )
+    ws.row_dimensions[2].height = 14
+
+    # ── Row 3: column labels ──────────────────────────────────────────────
+    for c_idx, (key, label, width, h) in enumerate(COLS, start=1):
+        lc = ws.cell(row=3, column=c_idx, value=label)
+        lc.font = hdr_font
+        lc.fill = hdr_fill
+        lc.alignment = c_al
+        lc.border = Border(
+            bottom=Side(style="medium", color=_LOAN_DIVIDER),
+            left=div_l if c_idx in group_starts else no_s,
+            right=no_s, top=no_s,
+        )
+    ws.row_dimensions[3].height = 20
+
+    # ── Data rows ─────────────────────────────────────────────────────────
+    move_keys = {"PRICE_MOVE_3M", "PRICE_MOVE_7D"}
+    mv_keys = {"MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM"}
+
+    for r_idx, row in enumerate(rows, start=1):
+        xl_row = r_idx + 3
+        row_fill = alt_fill if r_idx % 2 == 0 else white_fill
+        for c_idx, (key, label, width, h) in enumerate(COLS, start=1):
+            dc = ws.cell(row=xl_row, column=c_idx)
+            dc.fill = row_fill
+            dc.border = Border(
+                bottom=thin_bot,
+                left=div_l if c_idx in group_starts else no_s,
+                right=no_s, top=no_s,
+            )
+
+            if key == "#":
+                dc.value = r_idx
+                dc.font = data_font
+                dc.alignment = c_al
+                continue
+
+            value = row.get(key)
+
+            if key in move_keys and value is not None:
+                try:
+                    v = float(value)
+                    dc.value = round(v, 2)
+                    dc.number_format = "+0.00;-0.00;-"
+                    dc.font = Font(name="Calibri", size=9, bold=True,
+                                   color=_GREEN if v > 0 else (_RED if v < 0 else "808080"))
+                    dc.alignment = r_al
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            if key in mv_keys and value is not None:
+                try:
+                    v = float(value)
+                    dc.value = round(v, 0)
+                    dc.number_format = '+#,##0;-#,##0;"-"'
+                    dc.font = Font(name="Calibri", size=9, bold=True,
+                                   color=_GREEN if v > 0 else (_RED if v < 0 else "808080"))
+                    dc.alignment = r_al
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            if key == "YIELD" and value is not None:
+                try:
+                    dc.value = round(float(value), 1)
+                    dc.number_format = '0.0"%"'
+                    dc.font = data_font
+                    dc.alignment = r_al
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            if key in ("PX_MID", "PX_LOW_52W", "PX_HIGH_52W") and value is not None:
+                try:
+                    dc.value = round(float(value), 3)
+                    dc.number_format = "0.000"
+                    dc.font = data_font
+                    dc.alignment = r_al
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            if key == "AMT_OUTSTANDING_MM" and value is not None:
+                try:
+                    dc.value = round(float(value), 0)
+                    dc.number_format = '"$"#,##0'
+                    dc.font = data_font
+                    dc.alignment = r_al
+                    continue
+                except (TypeError, ValueError):
+                    pass
+
+            dc.value = value if value is not None else ""
+            dc.font = bold_font if key == "PARENT_TICKER" else data_font
+            dc.alignment = _al(h)
+
+    # ── Column widths + freeze ────────────────────────────────────────────
+    for c_idx, (key, label, width, h) in enumerate(COLS, start=1):
+        ws.column_dimensions[get_column_letter(c_idx)].width = width
+    ws.freeze_panes = "D4"
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    hdrs = {"Content-Disposition": 'attachment; filename="loans.xlsx"'}
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=hdrs,
+    )
+
+
+@app.post("/api/export/loans")
+def export_loans(payload: dict = Body(...), _: str = Depends(get_current_user)) -> StreamingResponse:
+    rows = payload.get("rows", [])
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=400, detail="rows must be a list")
+    dataset = ensure_data_loaded()
+    return build_loans_excel_response(rows, dataset.metadata)
+
+
 @app.post("/api/admin/reload")
 def admin_reload(_: str = Depends(get_current_user)) -> JSONResponse:
     workbook_path = settings.workbook_path

@@ -134,6 +134,24 @@ def _normalize_52w(df_52w: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _dedupe_144a_regs(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop 144A entries that have a matching REGS security (same issuer, amount, maturity, coupon, rank)."""
+    if "SERIES" not in df.columns:
+        return df
+    series_norm = df["SERIES"].fillna("").astype(str).str.upper().str.replace(r"\s+", "", regex=True)
+    is_144a = series_norm.str.contains("144A", na=False)
+    is_regs = series_norm.str.contains("REGS", na=False)
+    if not is_144a.any() or not is_regs.any():
+        return df
+    df = df.copy()
+    df["_AMT_ROUND"] = pd.to_numeric(df["AMT_OUTSTANDING"], errors="coerce").round(-3)
+    match_cols = [c for c in ["PARENT_TICKER", "_AMT_ROUND", "MATURITY", "CPN_VALUE", "PAYMENT_RANK"] if c in df.columns]
+    regs_keys = df.loc[is_regs, match_cols].drop_duplicates()
+    matched = df.loc[is_144a, match_cols + ["ID"]].merge(regs_keys, on=match_cols, how="inner")
+    ids_to_drop = set(matched["ID"].tolist()) if "ID" in matched.columns else set()
+    return df[~df["ID"].isin(ids_to_drop)].drop(columns=["_AMT_ROUND"]).copy()
+
+
 def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
     today = pd.Timestamp(anchor_date)
     max_known_rank = max(SENIORITY_ORDER.values())
@@ -146,29 +164,35 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         rank_text = group["PAYMENT_RANK"].fillna("").astype(str).str.lower()
         abnormal_price_mask = px > 120
         normal_mask = ~abnormal_price_mask
-        maturity_ok = maturity.isna() | (maturity > today + pd.DateOffset(years=1))
+        maturity_ok = maturity.isna() | (maturity > today + pd.DateOffset(months=2))
         face_sum = face.sum()
         summary_face = face[normal_mask].sum()
         is_preferred = group["_IS_PREFERRED"]
         is_secured_bond = group["_IS_SECURED"]
         not_defaulted = ~group["_IS_DEFAULTED"]
         is_loan = group["LOAN_TYPE"].notna() if "LOAN_TYPE" in group.columns else pd.Series(False, index=group.index)
+        if "ISS_CURRENCY" in group.columns:
+            is_usd = group["ISS_CURRENCY"].fillna("USD").astype(str).str.upper().eq("USD")
+        else:
+            is_usd = pd.Series(True, index=group.index)
 
-        # Loan eligibility: yield 9–50, price < 95 (no face/maturity minimum)
+        # Loan eligibility: yield 9–50, price < 95, USD only
         loan_eligible = (
             normal_mask
             & not_defaulted
             & is_loan
+            & is_usd
             & bond_yield.notna()
             & (bond_yield > 9) & (bond_yield < 50)
             & px.notna() & (px < 95)
         )
 
-        # Bond eligibility: yield 10–50, face ≥ $200M, price < 100, maturity > 1Y
+        # Bond eligibility: yield 10–50, face ≥ $200M, price < 100, maturity > 2M, USD only
         bond_eligible = (
             normal_mask
             & not_defaulted
             & ~is_loan
+            & is_usd
             & face.notna() & (face >= 200_000_000)
             & bond_yield.notna()
             & (bond_yield > 10) & (bond_yield < 50)
@@ -219,6 +243,17 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         unsecured_stack = cap_stack_mask & ~is_secured_bond & ~is_preferred
         pref_stack = cap_stack_mask & is_preferred
 
+        # Price / yield weighted average across full capital stack
+        px_all_sum = face[cap_stack_mask].sum()
+        wtavg_px_all = (px[cap_stack_mask] * face[cap_stack_mask]).sum() / px_all_sum if px_all_sum > 0 else pd.NA
+        wtavg_yield_all = (bond_yield[cap_stack_mask] * face[cap_stack_mask]).sum() / px_all_sum if px_all_sum > 0 else pd.NA
+
+        # Total face: all non-defaulted bonds with positive face (no price/yield/maturity filter)
+        total_face_mask = not_defaulted & face.notna() & (face > 0)
+        secured_total_face = total_face_mask & is_secured_bond & ~is_preferred
+        unsecured_total_face = total_face_mask & ~is_secured_bond & ~is_preferred
+        pref_total_face = total_face_mask & is_preferred
+
         move_3m = pd.to_numeric(group.get("PRICE_MOVE_3M"), errors="coerce") if "PRICE_MOVE_3M" in group.columns else pd.Series(dtype="float64")
         move_3m_valid = move_3m[screen_mask & move_3m.notna()]
         if not move_3m_valid.empty:
@@ -241,20 +276,31 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
                 "ISSUER_SECURED_FACE_MM": face[secured_criteria].sum() / 1e6,
                 "ISSUER_UNSECURED_FACE_MM": face[unsecured_criteria].sum() / 1e6,
                 "ISSUER_PREFERRED_FACE_MM": face[pref_criteria].sum() / 1e6,
+                "ISSUER_TOTAL_SECURED_FACE_MM": face[secured_total_face].sum() / 1e6,
+                "ISSUER_TOTAL_UNSECURED_FACE_MM": face[unsecured_total_face].sum() / 1e6,
+                "ISSUER_TOTAL_PREFERRED_FACE_MM": face[pref_total_face].sum() / 1e6,
                 "ISSUER_SCREEN_FACE_MM": criteria_face_sum / 1e6,
                 "ISSUER_SCREEN_FACE_PCT": (criteria_face_sum / face_sum * 100) if face_sum > 0 else pd.NA,
                 "ISSUER_WTAVG_PX": wtavg_px,
                 "ISSUER_WTAVG_YIELD": wtavg_yield,
+                "ISSUER_WTAVG_PX_ALL": wtavg_px_all,
+                "ISSUER_WTAVG_YIELD_ALL": wtavg_yield_all,
                 "ISSUER_MAX_YIELD": max_yield,
                 "ISSUER_DIST_TO_PAR": 100.0 - wtavg_px if pd.notna(wtavg_px) else pd.NA,
                 "ISSUER_DISLOCATION_MM": group.loc[cap_stack_mask, "DISLOCATION_MM"].sum(),
                 "ISSUER_DISLOCATION_SEC_MM": group.loc[secured_stack, "DISLOCATION_MM"].sum(),
                 "ISSUER_DISLOCATION_UNSEC_MM": group.loc[unsecured_stack, "DISLOCATION_MM"].sum(),
                 "ISSUER_DISLOCATION_PREF_MM": group.loc[pref_stack, "DISLOCATION_MM"].sum(),
+                "ISSUER_DISLOCATION_SEC_TARGET_MM": group.loc[screen_mask & group["_IS_SECURED"] & ~group["_IS_PREFERRED"], "DISLOCATION_MM"].sum(),
+                "ISSUER_DISLOCATION_UNSEC_TARGET_MM": group.loc[screen_mask & ~group["_IS_SECURED"] & ~group["_IS_PREFERRED"], "DISLOCATION_MM"].sum(),
+                "ISSUER_DISLOCATION_PREF_TARGET_MM": group.loc[screen_mask & group["_IS_PREFERRED"], "DISLOCATION_MM"].sum(),
                 "ISSUER_DISLOCATION_52W_MM": group.loc[cap_stack_mask, "DISLOCATION_52W_MM"].sum(),
                 "ISSUER_DISLOCATION_52W_SEC_MM": group.loc[secured_stack, "DISLOCATION_52W_MM"].sum(),
                 "ISSUER_DISLOCATION_52W_UNSEC_MM": group.loc[unsecured_stack, "DISLOCATION_52W_MM"].sum(),
                 "ISSUER_DISLOCATION_52W_PREF_MM": group.loc[pref_stack, "DISLOCATION_52W_MM"].sum(),
+                "ISSUER_DISLOCATION_52W_SEC_TARGET_MM": group.loc[screen_mask & group["_IS_SECURED"] & ~group["_IS_PREFERRED"], "DISLOCATION_52W_MM"].sum(),
+                "ISSUER_DISLOCATION_52W_UNSEC_TARGET_MM": group.loc[screen_mask & ~group["_IS_SECURED"] & ~group["_IS_PREFERRED"], "DISLOCATION_52W_MM"].sum(),
+                "ISSUER_DISLOCATION_52W_PREF_TARGET_MM": group.loc[screen_mask & group["_IS_PREFERRED"], "DISLOCATION_52W_MM"].sum(),
                 "SENIORITY_GAP": seniority_gap,
                 "GAP_SIGNAL": _gap_label(seniority_gap),
                 "ISSUER_OAS_DELTA": issuer_oas_delta,
@@ -263,8 +309,10 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
                 "HAS_DEFAULTED": bool(group["_IS_DEFAULTED"].any()),
                 "ISSUER_MAX_PRICE_MOVE_3M": max_3m,
                 "ISSUER_MAX_PRICE_MOVE_7D": max_7d,
-                "ISSUER_MV_CHANGE_3M_MM": group.loc[screen_mask, "MV_CHANGE_3M_MM"].sum() if "MV_CHANGE_3M_MM" in group.columns else pd.NA,
-                "ISSUER_MV_CHANGE_7D_MM": group.loc[screen_mask, "MV_CHANGE_7D_MM"].sum() if "MV_CHANGE_7D_MM" in group.columns else pd.NA,
+                "ISSUER_MV_CHANGE_3M_MM": group.loc[cap_stack_mask, "MV_CHANGE_3M_MM"].sum() if "MV_CHANGE_3M_MM" in group.columns else pd.NA,
+                "ISSUER_MV_CHANGE_7D_MM": group.loc[cap_stack_mask, "MV_CHANGE_7D_MM"].sum() if "MV_CHANGE_7D_MM" in group.columns else pd.NA,
+                "ISSUER_MV_CHANGE_3M_TARGET_MM": group.loc[screen_mask, "MV_CHANGE_3M_MM"].sum() if "MV_CHANGE_3M_MM" in group.columns else pd.NA,
+                "ISSUER_MV_CHANGE_7D_TARGET_MM": group.loc[screen_mask, "MV_CHANGE_7D_MM"].sum() if "MV_CHANGE_7D_MM" in group.columns else pd.NA,
             }
         )
 
@@ -359,7 +407,7 @@ def _load_xlsx_sheet(path: Path, sheet_name: str) -> pd.DataFrame:
 
 
 def load_workbook(path: Path) -> WorkbookData:
-    df_master = _normalize_master(_clean_sheet(_load_xlsx_sheet(path, "master")))
+    df_master = _dedupe_144a_regs(_normalize_master(_clean_sheet(_load_xlsx_sheet(path, "master"))))
     df_spread = _normalize_spread(_clean_sheet(_load_xlsx_sheet(path, "spread_px")))
     df_52w = _normalize_52w(_clean_sheet(_load_xlsx_sheet(path, "52w_px")))
 
@@ -436,16 +484,27 @@ def load_workbook(path: Path) -> WorkbookData:
                 "ISSUER_SCREEN_FACE_PCT": "% Face Meets Criteria",
                 "ISSUER_WTAVG_PX": "Price",
                 "ISSUER_WTAVG_YIELD": "Yield",
+                "ISSUER_WTAVG_PX_ALL": "Price All",
+                "ISSUER_WTAVG_YIELD_ALL": "Yield All",
                 "ISSUER_MAX_YIELD": "Max Yield",
                 "ISSUER_SECURED_FACE_MM": "Secured Face ($MM)",
                 "ISSUER_UNSECURED_FACE_MM": "Unsecured Face ($MM)",
                 "ISSUER_PREFERRED_FACE_MM": "Preferred Face ($MM)",
+                "ISSUER_TOTAL_SECURED_FACE_MM": "Total Secured Face ($MM)",
+                "ISSUER_TOTAL_UNSECURED_FACE_MM": "Total Unsecured Face ($MM)",
+                "ISSUER_TOTAL_PREFERRED_FACE_MM": "Total Preferred Face ($MM)",
                 "ISSUER_DISLOCATION_52W_SEC_MM": "52W PEAK UPSIDE SECURED ($MM)",
                 "ISSUER_DISLOCATION_52W_UNSEC_MM": "52W PEAK UPSIDE UNSECURED ($MM)",
                 "ISSUER_DISLOCATION_52W_PREF_MM": "52W PEAK UPSIDE PREFERRED ($MM)",
+                "ISSUER_DISLOCATION_52W_SEC_TARGET_MM": "52W PEAK UPSIDE SECURED TARGET ($MM)",
+                "ISSUER_DISLOCATION_52W_UNSEC_TARGET_MM": "52W PEAK UPSIDE UNSECURED TARGET ($MM)",
+                "ISSUER_DISLOCATION_52W_PREF_TARGET_MM": "52W PEAK UPSIDE PREFERRED TARGET ($MM)",
                 "ISSUER_DISLOCATION_SEC_MM": "RETURN TO PAR SECURED ($MM)",
                 "ISSUER_DISLOCATION_UNSEC_MM": "RETURN TO PAR UNSECURED ($MM)",
                 "ISSUER_DISLOCATION_PREF_MM": "RETURN TO PAR PREFERRED ($MM)",
+                "ISSUER_DISLOCATION_SEC_TARGET_MM": "RETURN TO PAR SECURED TARGET ($MM)",
+                "ISSUER_DISLOCATION_UNSEC_TARGET_MM": "RETURN TO PAR UNSECURED TARGET ($MM)",
+                "ISSUER_DISLOCATION_PREF_TARGET_MM": "RETURN TO PAR PREFERRED TARGET ($MM)",
                 "SENIORITY_GAP": "Seniority Basis (pts)",
                 "GAP_SIGNAL": "Gap Signal",
                 "ISSUER_OAS_DELTA": "OAS Delta (bps)",
@@ -453,6 +512,8 @@ def load_workbook(path: Path) -> WorkbookData:
                 "ISSUER_MAX_PRICE_MOVE_7D": "7D Price Move",
                 "ISSUER_MV_CHANGE_3M_MM": "3M MV Change ($MM)",
                 "ISSUER_MV_CHANGE_7D_MM": "7D MV Change ($MM)",
+                "ISSUER_MV_CHANGE_3M_TARGET_MM": "3M MV Change TARGET ($MM)",
+                "ISSUER_MV_CHANGE_7D_TARGET_MM": "7D MV Change TARGET ($MM)",
             }
         )
     )
@@ -465,6 +526,9 @@ def load_workbook(path: Path) -> WorkbookData:
     issuer_display["Secured Face ($BN)"] = issuer_display["Secured Face ($MM)"] / 1000.0
     issuer_display["Unsecured Face ($BN)"] = issuer_display["Unsecured Face ($MM)"] / 1000.0
     issuer_display["Preferred Face ($BN)"] = issuer_display["Preferred Face ($MM)"] / 1000.0
+    issuer_display["Total Secured Face ($BN)"] = issuer_display["Total Secured Face ($MM)"] / 1000.0
+    issuer_display["Total Unsecured Face ($BN)"] = issuer_display["Total Unsecured Face ($MM)"] / 1000.0
+    issuer_display["Total Preferred Face ($BN)"] = issuer_display["Total Preferred Face ($MM)"] / 1000.0
     issuer_display["Maturity Within 1Y"] = issuer_display.apply(lambda r: _wall_label(r.get("WALL_LT1Y_MM"), r.get("WALL_LT1Y_PCT")), axis=1)
     issuer_display["COVERAGE PRIMARY"] = pd.NA
     issuer_display["COVERAGE SECONDARY"] = pd.NA
@@ -474,20 +538,31 @@ def load_workbook(path: Path) -> WorkbookData:
     issuer_columns = [
         "PARENT_TICKER",
         "Issuer", "Sector", "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
-        "Price", "Yield", "3M Price Move", "7D Price Move", "3M MV Change ($MM)", "7D MV Change ($MM)",
+        "Price", "Yield", "Price All", "Yield All",
+        "3M Price Move", "7D Price Move",
+        "3M MV Change ($MM)", "7D MV Change ($MM)",
+        "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)",
         "52W PEAK UPSIDE SECURED ($MM)",
         "52W PEAK UPSIDE UNSECURED ($MM)",
         "52W PEAK UPSIDE PREFERRED ($MM)",
+        "52W PEAK UPSIDE SECURED TARGET ($MM)",
+        "52W PEAK UPSIDE UNSECURED TARGET ($MM)",
+        "52W PEAK UPSIDE PREFERRED TARGET ($MM)",
         "RETURN TO PAR SECURED ($MM)",
         "RETURN TO PAR UNSECURED ($MM)",
         "RETURN TO PAR PREFERRED ($MM)",
+        "RETURN TO PAR SECURED TARGET ($MM)",
+        "RETURN TO PAR UNSECURED TARGET ($MM)",
+        "RETURN TO PAR PREFERRED TARGET ($MM)",
         "Seniority Basis (pts)", "Gap Signal",
         "Maturity Within 1Y", "OAS Delta (bps)",
         "COVERAGE PRIMARY", "COVERAGE SECONDARY",
         "Adj Unsecured Sprd Movement (bps)", "Sprd Movement Label",
-        "Total Face ($MM)", "Secured Face ($MM)", "Unsecured Face ($MM)", "Preferred Face ($MM)", "Max Yield",
+        "Total Face ($MM)", "Secured Face ($MM)", "Unsecured Face ($MM)", "Preferred Face ($MM)",
+        "Total Secured Face ($BN)", "Total Unsecured Face ($BN)", "Total Preferred Face ($BN)", "Max Yield",
         "HAS_DEFAULTED",
     ]
+    issuer_display = issuer_display[issuer_display.get("Sector", pd.Series(dtype=str)).fillna("").astype(str).str.lower() != "government"]
     issuer_display = issuer_display[[col for col in issuer_columns if col in issuer_display.columns]].sort_values(
         by=["Total Face ($MM)", "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)"],
         ascending=[False, False, False],
@@ -501,7 +576,8 @@ def load_workbook(path: Path) -> WorkbookData:
         "PX_MID", "PX_MID_T7", "PX_MID_T90", "PRICE_MOVE_7D", "PRICE_MOVE_3M",
         "YIELD", "YIELD_T90", "DIST_TO_PAR", "DISLOCATION_MM", "PX_HIGH_52W", "DATE_OF_HIGH",
         "PX_LOW_52W", "DATE_OF_LOW", "DISLOCATION_52W_MM", "OAS", "OAS_T90", "OAS_DELTA",
-        "DISTRESS_TIER", "SECTOR", "COUNTRY", "CPN_TYPE", "CPN_VALUE", "LAST_MONTH_VOLUME", "_IS_DEFAULTED",
+        "DISTRESS_TIER", "SECTOR", "COUNTRY", "CPN_TYPE", "CPN_VALUE", "LAST_MONTH_VOLUME",
+        "ISS_CURRENCY", "_IS_DEFAULTED",
     ]
     instruments = summary_df[[col for col in instrument_columns if col in summary_df.columns]].copy()
     instruments["AMT_OUTSTANDING_MM"] = pd.to_numeric(instruments["AMT_OUTSTANDING"], errors="coerce") / 1e6
@@ -601,12 +677,15 @@ def load_workbook(path: Path) -> WorkbookData:
 
     loan_columns = [
         "ID", "PARENT_TICKER", "NAME", "LOAN_TYPE", "PAYMENT_RANK", "SECTOR",
-        "AMT_OUTSTANDING", "PX_MID", "YIELD",
+        "AMT_OUTSTANDING", "PX_MID", "YIELD", "MATURITY",
         "PX_HIGH_52W", "DATE_OF_HIGH", "PX_LOW_52W", "DATE_OF_LOW",
         "PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM",
     ]
     if "LOAN_TYPE" in df.columns:
         loans_df = df[df["LOAN_TYPE"].notna()].copy()
+        # Exclude non-USD loans
+        if "ISS_CURRENCY" in loans_df.columns:
+            loans_df = loans_df[loans_df["ISS_CURRENCY"].fillna("USD").astype(str).str.upper().eq("USD")].copy()
     else:
         loans_df = pd.DataFrame()
     if not loans_df.empty:

@@ -15,9 +15,10 @@ const state = {
   filteredLoanRows: [],
   loanSortField: "AMT_OUTSTANDING_MM",
   loanSortDirection: "desc",
-  loanScreened: false,
+  loanScreenMode: null,
   loanActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
   loanFilterValues: { yieldMin: 9, yieldMax: 50, priceMax: 95 },
+  targetMode: "target",
   upsideMode: "52w",
   moveMode: "3m",
   sortField: "52W PEAK UPSIDE SECURED ($MM)",
@@ -71,6 +72,8 @@ const loansSearchInput = document.getElementById("loansSearchInput");
 const clearLoansSearchButton = document.getElementById("clearLoansSearchButton");
 const loanTopNInput = document.getElementById("loanTopNInput");
 const loanScreenButton = document.getElementById("loanScreenButton");
+const loanYieldScreenButton = document.getElementById("loanYieldScreenButton");
+const downloadLoansButton = document.getElementById("downloadLoansButton");
 const loanFilterChips = document.getElementById("loanFilterChips");
 const detailCard = document.getElementById("detailCard");
 const detailTicker = document.getElementById("detailTicker");
@@ -166,15 +169,19 @@ function fmt(value, digits = 2) {
 }
 
 const COVERAGE_ANALYSTS = [
-  "Alex Johnson", "Sarah Chen", "Michael Park",
-  "Emma Wilson", "David Kim", "Lisa Rodriguez",
-  "James Miller", "Nicole Wang",
+  "David", "Bill", "Bronte", "Jake", "Basso", "Evan", "Brie", "Manish",
+  "Allen", "Sherman", "Nicoll", "Zhe", "Dante", "Olivia", "Bergstein",
+  "Casey", "Bobby", "Patrick", "Brooks", "Nick", "Sam", "Reed",
+  "Nick M", "Kendrick", "Ryan", "Mark", "Samson", "Jared",
 ];
 
 const zeroAsDashColumns = new Set([
   "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
+  "Total Secured Face ($BN)", "Total Unsecured Face ($BN)", "Total Preferred Face ($BN)",
   "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)",
+  "52W PEAK UPSIDE SECURED TARGET ($MM)", "52W PEAK UPSIDE UNSECURED TARGET ($MM)", "52W PEAK UPSIDE PREFERRED TARGET ($MM)",
   "RETURN TO PAR SECURED ($MM)", "RETURN TO PAR UNSECURED ($MM)", "RETURN TO PAR PREFERRED ($MM)",
+  "RETURN TO PAR SECURED TARGET ($MM)", "RETURN TO PAR UNSECURED TARGET ($MM)", "RETURN TO PAR PREFERRED TARGET ($MM)",
 ]);
 
 function fmtIssuer(column, value) {
@@ -183,8 +190,9 @@ function fmtIssuer(column, value) {
 }
 
 function issuerDigits(column) {
-  if (["Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)", "Price", "Yield"].includes(column)) return 1;
-  if (["52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)", "RETURN TO PAR SECURED ($MM)", "RETURN TO PAR UNSECURED ($MM)", "RETURN TO PAR PREFERRED ($MM)", "OAS Delta (bps)", "3M MV Change ($MM)"].includes(column)) return 0;
+  if (["Price", "Yield", "Price All", "Yield All"].includes(column)) return 2;
+  if (column.endsWith("($BN)")) return 2;
+  if (column.endsWith("($MM)")) return 0;
   return 2;
 }
 
@@ -341,27 +349,44 @@ function renderMoverPriceRange(row) {
 }
 
 const glossaryEntries = [
-  { sup: "1", label: "Face ($BN)", def: "Face value of instruments that fit the screening criteria" },
-  { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside assuming prices revert to 52-week highs (52W) or par (Return to Par)" },
-  { sup: "3", label: "3M / 7D MV Change", def: "Largest price movement among qualifying instruments over the time period" },
+  { sup: "1", label: "Face ($BN)", def: "Face value of instruments meeting screening criteria: price <100, yield 10–50%, face ≥$200M, maturity >2M, non-subordinated, non-defaulted" },
+  { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside assuming all securities’ prices revert to 52-week highs (52W) or par (Return to Par)" },
+  { sup: "3", label: "3M / 7D MV Change", def: "Aggregate market value change ($MM) across all securities over the time period" },
   { sup: "4", label: "Price", def: "Price weighted by face amounts outstanding" },
   { sup: "5", label: "Yield", def: "Yield weighted by face amounts outstanding" },
   { sup: "6", label: "Last Month Traded Volume ($MM)", def: "Traded volume (in thousands of USD) for the last month based on all trades reported to FINRA TRACE" },
 ];
 
 function renderIssuerTable() {
-  const faceColumns = ["Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)"];
+  const isTarget = state.targetMode === "target";
+  const faceLabel = isTarget ? "FACE TARGET" : "FACE TOTAL";
+  const faceSecKey = isTarget ? "Secured Face ($BN)" : "Total Secured Face ($BN)";
+  const faceUnsecKey = isTarget ? "Unsecured Face ($BN)" : "Total Unsecured Face ($BN)";
+  const facePrefKey = isTarget ? "Preferred Face ($BN)" : "Total Preferred Face ($BN)";
+  const faceColumns = [faceSecKey, faceUnsecKey, facePrefKey];
 
   const is52w = state.upsideMode === "52w";
   const upsideLabel = is52w ? "52W Peak Upside" : "Return to Par Upside";
   const upsideSup = "<sup>2</sup>";
-  const upsideSecKey = is52w ? "52W PEAK UPSIDE SECURED ($MM)" : "RETURN TO PAR SECURED ($MM)";
-  const upsideUnsecKey = is52w ? "52W PEAK UPSIDE UNSECURED ($MM)" : "RETURN TO PAR UNSECURED ($MM)";
-  const upsidePrefKey = is52w ? "52W PEAK UPSIDE PREFERRED ($MM)" : "RETURN TO PAR PREFERRED ($MM)";
+  const upsideSecKey = is52w
+    ? (isTarget ? "52W PEAK UPSIDE SECURED TARGET ($MM)" : "52W PEAK UPSIDE SECURED ($MM)")
+    : (isTarget ? "RETURN TO PAR SECURED TARGET ($MM)" : "RETURN TO PAR SECURED ($MM)");
+  const upsideUnsecKey = is52w
+    ? (isTarget ? "52W PEAK UPSIDE UNSECURED TARGET ($MM)" : "52W PEAK UPSIDE UNSECURED ($MM)")
+    : (isTarget ? "RETURN TO PAR UNSECURED TARGET ($MM)" : "RETURN TO PAR UNSECURED ($MM)");
+  const upsidePrefKey = is52w
+    ? (isTarget ? "52W PEAK UPSIDE PREFERRED TARGET ($MM)" : "52W PEAK UPSIDE PREFERRED ($MM)")
+    : (isTarget ? "RETURN TO PAR PREFERRED TARGET ($MM)" : "RETURN TO PAR PREFERRED ($MM)");
 
   const is3m = state.moveMode === "3m";
-  const mvChangeKey = is3m ? "3M MV Change ($MM)" : "7D MV Change ($MM)";
+  const mvChangeKey = is3m
+    ? (isTarget ? "3M MV Change TARGET ($MM)" : "3M MV Change ($MM)")
+    : (isTarget ? "7D MV Change TARGET ($MM)" : "7D MV Change ($MM)");
   const mvChangeLabel = is3m ? "3M MV △" : "7D MV △";
+  const modeTag = isTarget ? " (Target)" : " (All)";
+
+  const priceKey = isTarget ? "Price" : "Price All";
+  const yieldKey = isTarget ? "Yield" : "Yield All";
 
   const tableColumnOrder = [
     "Issuer", "Sector",
@@ -370,7 +395,7 @@ function renderIssuerTable() {
     upsideUnsecKey,
     upsidePrefKey,
     mvChangeKey,
-    "Price", "Yield",
+    priceKey, yieldKey,
     "COVERAGE PRIMARY",
     "COVERAGE SECONDARY",
   ];
@@ -379,28 +404,33 @@ function renderIssuerTable() {
     <tr class="header-group-row">
       <th class="col-group-r"></th>
       <th></th>
-      <th colspan="3" class="group-header col-group-l">FACE <em>(In $ Billions)</em><sup>1</sup></th>
-      <th colspan="3" class="group-header upside-toggle col-group-l" id="upsideToggle" title="Click to toggle">${upsideLabel} <em>(In $ Millions)</em>${upsideSup} &#x21c4;</th>
-      <th class="group-header upside-toggle col-group-l col-group-r" id="moveToggle" title="Click to toggle" style="min-width:155px">${mvChangeLabel}<br><em>(In $ Millions)</em><sup>3</sup> &#x21c4;</th>
-      <th colspan="2" class="group-header col-group-r">Price &amp; Yield</th>
+      <th colspan="3" class="group-header upside-toggle col-group-l" id="faceToggle" title="Click to toggle">${faceLabel} <em>(In $ Billions)</em><sup>1</sup> &#x21c4;</th>
+      <th colspan="3" class="group-header upside-toggle col-group-l" id="upsideToggle" title="Click to toggle">${upsideLabel}${modeTag} <em>(In $ Millions)</em>${upsideSup} &#x21c4;</th>
+      <th class="group-header upside-toggle col-group-l col-group-r" id="moveToggle" title="Click to toggle" style="min-width:155px">${mvChangeLabel}${modeTag}<br><em>(In $ Millions)</em><sup>3</sup> &#x21c4;</th>
+      <th colspan="2" class="group-header col-group-r">Price &amp; Yield${modeTag}</th>
       <th colspan="2" class="group-header">Coverage (WIP)</th>
     </tr>
     <tr>
       <th class="col-fit col-group-r">Issuer</th>
       <th class="col-fit">Sector</th>
-      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="Secured Face ($BN)">Secured${sortIndicator("Secured Face ($BN)")}</button></th>
-      <th class="col-tight"><button type="button" class="sort-header" data-sort="Unsecured Face ($BN)">Unsecured${sortIndicator("Unsecured Face ($BN)")}</button></th>
-      <th class="col-tight"><button type="button" class="sort-header" data-sort="Preferred Face ($BN)">Preferred${sortIndicator("Preferred Face ($BN)")}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${faceSecKey}">Secured${sortIndicator(faceSecKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceUnsecKey}">Unsecured${sortIndicator(faceUnsecKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${facePrefKey}">Preferred${sortIndicator(facePrefKey)}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${upsideSecKey}">Secured${sortIndicator(upsideSecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsideUnsecKey}">Unsecured${sortIndicator(upsideUnsecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsidePrefKey}">Preferred${sortIndicator(upsidePrefKey)}</button></th>
       <th class="col-tight col-group-l col-group-r"><button type="button" class="sort-header" data-sort="${mvChangeKey}">${sortIndicator(mvChangeKey) || "&#x21c5;"}</button></th>
-      <th><button type="button" class="sort-header" data-sort="Price">Price<sup>4</sup>${sortIndicator("Price")}</button></th>
-      <th class="col-group-r"><button type="button" class="sort-header" data-sort="Yield">Yield<sup>5</sup>${sortIndicator("Yield")}</button></th>
+      <th><button type="button" class="sort-header" data-sort="${priceKey}">Price<sup>4</sup>${sortIndicator(priceKey)}</button></th>
+      <th class="col-group-r"><button type="button" class="sort-header" data-sort="${yieldKey}">Yield<sup>5</sup>${sortIndicator(yieldKey)}</button></th>
       <th>Primary</th>
       <th>Secondary</th>
     </tr>
   `;
+
+  document.getElementById("faceToggle").addEventListener("click", () => {
+    state.targetMode = state.targetMode === "target" ? "total" : "target";
+    renderIssuerTable();
+  });
 
   document.getElementById("upsideToggle").addEventListener("click", () => {
     state.upsideMode = state.upsideMode === "52w" ? "par" : "52w";
@@ -422,7 +452,7 @@ function renderIssuerTable() {
           : "";
         return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${marker}</button></td>`;
       }
-      if (column === "3M MV Change ($MM)" || column === "7D MV Change ($MM)") {
+      if (["3M MV Change ($MM)", "7D MV Change ($MM)", "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)"].includes(column)) {
         if (value === null || value === undefined || value === 0) return `<td class="col-tight col-group-l col-group-r">-</td>`;
         const v = Number(value);
         const cls = v > 0 ? "positive" : v < 0 ? "negative" : "neutral";
@@ -574,11 +604,12 @@ const loanColumns = [
   { key: "AMT_OUTSTANDING_MM", label: "Amt Out",     sortable: true, tdClass: "col-tight col-group-l" },
   { key: "PX_MID",             label: "Current Px",  tdClass: "col-tight col-group-l" },
   { key: "YIELD",              label: "Yield",        tdClass: "col-tight" },
+  { key: "CPN_VALUE",          label: "Coupon",       tdClass: "col-tight" },
   { key: "PRICE_MOVE_3M",      label: "3M Px Move",  sortable: true, tdClass: "col-tight col-group-l" },
   { key: "PRICE_MOVE_7D",      label: "7D Px Move",  sortable: true, tdClass: "col-tight" },
   { key: "MV_CHANGE_3M_MM",    label: "3M MV ($MM)", sortable: true, tdClass: "col-tight col-group-l" },
   { key: "MV_CHANGE_7D_MM",    label: "7D MV ($MM)", sortable: true, tdClass: "col-tight" },
-  { key: "PRICE_RANGE",        label: "52W Range" },
+  { key: "PRICE_RANGE",        label: "52W Range",   tdClass: "col-group-l" },
   { key: "COVERAGE_PRIMARY",   label: "Primary",     tdClass: "col-tight col-group-l" },
   { key: "COVERAGE_SECONDARY", label: "Secondary",   tdClass: "col-tight" },
 ];
@@ -657,11 +688,14 @@ function renderLoanFilterChips() {
 
 function updateLoanScreenButton() {
   const topN = parseInt(loanTopNInput.value, 10) || 50;
-  loanScreenButton.textContent = state.loanScreened
-    ? `Screened: Top ${topN} ✓`
-    : `Screen: Top ${topN}`;
-  loanScreenButton.classList.toggle("btn-on", state.loanScreened);
-  loanScreenButton.classList.toggle("secondary", !state.loanScreened);
+  const isSizeOn = state.loanScreenMode === "size";
+  const isYieldOn = state.loanScreenMode === "yield";
+  loanScreenButton.textContent = isSizeOn ? `Screened: Top ${topN} by Size ✓` : `Screen by Size: Top ${topN}`;
+  loanScreenButton.classList.toggle("btn-on", isSizeOn);
+  loanScreenButton.classList.toggle("secondary", !isSizeOn);
+  loanYieldScreenButton.textContent = isYieldOn ? `Screened: Top ${topN} by Yield ✓` : `Screen by Yield: Top ${topN}`;
+  loanYieldScreenButton.classList.toggle("btn-on", isYieldOn);
+  loanYieldScreenButton.classList.toggle("secondary", !isYieldOn);
 }
 
 function applyLoansFilter() {
@@ -681,12 +715,15 @@ function applyLoansFilter() {
     }
   });
 
-  if (state.loanScreened) {
+  if (state.loanScreenMode === "size") {
     rows = rows.filter((row) => Number(row.YIELD) >= 9 && Number(row.AMT_OUTSTANDING_MM) >= 200);
+  } else if (state.loanScreenMode === "yield") {
+    rows = rows.filter((row) => Number(row.AMT_OUTSTANDING_MM) >= 700);
   }
 
-  const sf = state.loanSortField;
-  const asc = state.loanSortDirection === "asc";
+  // Yield screen forces sort by yield desc; otherwise use current sort state
+  const sf = state.loanScreenMode === "yield" ? "YIELD" : state.loanSortField;
+  const asc = state.loanScreenMode === "yield" ? false : state.loanSortDirection === "asc";
   rows.sort((a, b) => {
     let av = Number(a[sf]);
     let bv = Number(b[sf]);
@@ -705,7 +742,11 @@ function applyLoansFilter() {
 
   state.filteredLoanRows = rows;
   clearLoansSearchButton.classList.toggle("hidden", !loansSearchInput.value);
-  const screenNote = state.loanScreened ? " — Yield ≥9%, Tranche ≥$200M" : "";
+  const screenNote = state.loanScreenMode === "size"
+    ? " — Yield ≥9%, Tranche ≥$200M"
+    : state.loanScreenMode === "yield"
+    ? " — Face ≥$700M, sorted by Yield"
+    : "";
   loansStatus.textContent = `${rows.length} loan instrument${rows.length !== 1 ? "s" : ""}${screenNote}`;
   renderLoanFilterChips();
   updateLoanScreenButton();
@@ -724,10 +765,10 @@ function renderLoansTable() {
       <th></th>
       <th></th>
       <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">(In $ Millions)</em></th>
-      <th colspan="2" class="group-header col-group-l">Price &amp; Yield</th>
+      <th colspan="3" class="group-header col-group-l">Price &amp; Yield</th>
       <th colspan="2" class="group-header col-group-l">Px Move</th>
       <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">(In $ Millions)</em></th>
-      <th></th>
+      <th class="col-group-l"></th>
       <th colspan="2" class="group-header col-group-l">Coverage</th>
     </tr>
     <tr>
@@ -737,11 +778,12 @@ function renderLoansTable() {
       <th class="col-tight col-group-l"><button type="button" class="sort-header loan-sort-header" data-loan-sort="AMT_OUTSTANDING_MM">Amt Out${loanSortIndicator("AMT_OUTSTANDING_MM")}</button></th>
       <th class="col-tight col-group-l">Current Px</th>
       <th class="col-tight">Yield</th>
+      <th class="col-tight">Coupon</th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header loan-sort-header" data-loan-sort="PRICE_MOVE_3M">3M${loanSortIndicator("PRICE_MOVE_3M")}</button></th>
       <th class="col-tight"><button type="button" class="sort-header loan-sort-header" data-loan-sort="PRICE_MOVE_7D">7D${loanSortIndicator("PRICE_MOVE_7D")}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header loan-sort-header" data-loan-sort="MV_CHANGE_3M_MM">3M${loanSortIndicator("MV_CHANGE_3M_MM")}</button></th>
       <th class="col-tight"><button type="button" class="sort-header loan-sort-header" data-loan-sort="MV_CHANGE_7D_MM">7D${loanSortIndicator("MV_CHANGE_7D_MM")}</button></th>
-      <th>52W Range</th>
+      <th class="col-group-l">52W Range</th>
       <th class="col-tight col-group-l">Primary</th>
       <th class="col-tight">Secondary</th>
     </tr>
@@ -890,13 +932,16 @@ function applyFilters() {
     );
   }
 
+  const mvColumns = new Set(["3M MV Change ($MM)", "7D MV Change ($MM)", "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)"]);
   rows.sort((left, right) => {
     const a = left[sortBy];
     const b = right[sortBy];
     const aNum = typeof a === "number" ? a : Number(a);
     const bNum = typeof b === "number" ? b : Number(b);
     const numeric = !Number.isNaN(aNum) && !Number.isNaN(bNum);
-    const result = numeric ? aNum - bNum : String(a ?? "").localeCompare(String(b ?? ""));
+    const av = numeric && mvColumns.has(sortBy) ? Math.abs(aNum) : aNum;
+    const bv = numeric && mvColumns.has(sortBy) ? Math.abs(bNum) : bNum;
+    const result = numeric ? av - bv : String(a ?? "").localeCompare(String(b ?? ""));
     return ascending ? result : -result;
   });
 
@@ -933,6 +978,8 @@ function isQualifyingRow(row, minMaturity) {
 
 function getExclusionReasons(row, minMaturity) {
   const reasons = [];
+  const currency = String(row.ISS_CURRENCY || "").toUpperCase().trim();
+  if (currency && currency !== "USD") reasons.push(`Non-USD (${currency})`);
   const rawYield = row.YIELD;
   const rawPx = row.PX_MID;
   const yieldMissing = rawYield === null || rawYield === undefined || rawYield === "";
@@ -952,7 +999,7 @@ function getExclusionReasons(row, minMaturity) {
   const rankText = String(row.PAYMENT_RANK || "").toLowerCase();
   const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
   const maturityEligible = !minMaturity || !maturity || (maturity instanceof Date && !Number.isNaN(maturity.getTime()) && maturity > minMaturity);
-  if (!maturityEligible) reasons.push("Maturity < 1Y");
+  if (!maturityEligible) reasons.push("Maturity < 2M");
   if (rowAmount < 200) reasons.push("Size < $200M");
   if (rankText.includes("subordinated")) reasons.push("Subordinated");
   if (yieldMissing) reasons.push("No yield data");
@@ -1024,7 +1071,7 @@ function renderDetailHead() {
 function renderIssuerDetail(parentTicker) {
   const anchorDate = state.metadata.anchor_date ? new Date(state.metadata.anchor_date) : null;
   const minMaturity = anchorDate ? new Date(anchorDate) : null;
-  if (minMaturity) minMaturity.setFullYear(minMaturity.getFullYear() + 1);
+  if (minMaturity) minMaturity.setMonth(minMaturity.getMonth() + 2);
 
   const allRows = state.instrumentMap.get(parentTicker) || [];
   const rows = allRows.filter((row) => isQualifyingRow(row, minMaturity)).sort(detailSortFn);
@@ -1199,7 +1246,12 @@ loanTopNInput.addEventListener("input", () => {
 });
 
 loanScreenButton.addEventListener("click", () => {
-  state.loanScreened = !state.loanScreened;
+  state.loanScreenMode = state.loanScreenMode === "size" ? null : "size";
+  applyLoansFilter();
+});
+
+loanYieldScreenButton.addEventListener("click", () => {
+  state.loanScreenMode = state.loanScreenMode === "yield" ? null : "yield";
   applyLoansFilter();
 });
 
@@ -1235,6 +1287,10 @@ hideDetailButton.addEventListener("click", () => {
 downloadDetailButton.addEventListener("click", async () => {
   if (!state.selectedIssuer) return;
   await downloadExcel("/api/export/detail", { issuer: state.selectedIssuer, rows: state.detailRows });
+});
+
+downloadLoansButton.addEventListener("click", async () => {
+  await downloadExcel("/api/export/loans", { rows: state.filteredLoanRows });
 });
 
 document.getElementById("glossaryButton").addEventListener("click", () => {
