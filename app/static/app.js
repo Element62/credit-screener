@@ -18,10 +18,9 @@ const state = {
   loanScreenMode: null,
   loanActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
   loanFilterValues: { yieldMin: 9, yieldMax: 50, priceMax: 95 },
-  targetMode: "target",
   upsideMode: "52w",
   moveMode: "3m",
-  sortField: "52W PEAK UPSIDE SECURED ($MM)",
+  sortField: "52W PEAK UPSIDE SECURED TARGET ($MM)",
   sortDirection: "desc",
   coverageMap: {},
 };
@@ -178,9 +177,7 @@ const COVERAGE_ANALYSTS = [
 const zeroAsDashColumns = new Set([
   "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
   "Total Secured Face ($BN)", "Total Unsecured Face ($BN)", "Total Preferred Face ($BN)",
-  "52W PEAK UPSIDE SECURED ($MM)", "52W PEAK UPSIDE UNSECURED ($MM)", "52W PEAK UPSIDE PREFERRED ($MM)",
   "52W PEAK UPSIDE SECURED TARGET ($MM)", "52W PEAK UPSIDE UNSECURED TARGET ($MM)", "52W PEAK UPSIDE PREFERRED TARGET ($MM)",
-  "RETURN TO PAR SECURED ($MM)", "RETURN TO PAR UNSECURED ($MM)", "RETURN TO PAR PREFERRED ($MM)",
   "RETURN TO PAR SECURED TARGET ($MM)", "RETURN TO PAR UNSECURED TARGET ($MM)", "RETURN TO PAR PREFERRED TARGET ($MM)",
 ]);
 
@@ -349,88 +346,81 @@ function renderMoverPriceRange(row) {
 }
 
 const glossaryEntries = [
-  { sup: "1", label: "Face ($BN)", def: "Face value of instruments meeting screening criteria: price <100, yield 10–50%, face ≥$200M, maturity >2M, non-subordinated, non-defaulted" },
-  { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside assuming all securities’ prices revert to 52-week highs (52W) or par (Return to Par)" },
-  { sup: "3", label: "3M / 7D MV Change", def: "Aggregate market value change ($MM) across all securities over the time period" },
-  { sup: "4", label: "Price", def: "Price weighted by face amounts outstanding" },
-  { sup: "5", label: "Yield", def: "Yield weighted by face amounts outstanding" },
+  { sup: "1", label: "Face ($BN)", def: "<strong>Strike Zone:</strong> face value of instruments meeting screening criteria (see below). <strong>Total:</strong> face value of all non-defaulted instruments regardless of screening criteria." },
+  { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside for Strike Zone securities, assuming prices revert to 52-week highs (52W) or par (Return to Par)." },
+  { sup: "3", label: "3M / 7D MV Change", def: "Aggregate market value change ($MM) for Strike Zone securities over the selected time period." },
+  { sup: "4", label: "Price", def: "Face-weighted average mid price across Strike Zone securities." },
+  { sup: "5", label: "Yield", def: "Face-weighted average yield to maturity across Strike Zone securities." },
   { sup: "6", label: "Last Month Traded Volume ($MM)", def: "Traded volume (in thousands of USD) for the last month based on all trades reported to FINRA TRACE" },
 ];
 
 function renderIssuerTable() {
-  const isTarget = state.targetMode === "target";
-  const faceLabel = isTarget ? "FACE TARGET" : "FACE TOTAL";
-  const faceSecKey = isTarget ? "Secured Face ($BN)" : "Total Secured Face ($BN)";
-  const faceUnsecKey = isTarget ? "Unsecured Face ($BN)" : "Total Unsecured Face ($BN)";
-  const facePrefKey = isTarget ? "Preferred Face ($BN)" : "Total Preferred Face ($BN)";
-  const faceColumns = [faceSecKey, faceUnsecKey, facePrefKey];
+  // Face — Strike Zone (criteria-eligible)
+  const faceStrikeSecKey  = "Secured Face ($BN)";
+  const faceStrikeUnsecKey = "Unsecured Face ($BN)";
+  const faceStrikePrefKey  = "Preferred Face ($BN)";
+  // Face — Total (all non-defaulted)
+  const faceTotalSecKey  = "Total Secured Face ($BN)";
+  const faceTotalUnsecKey = "Total Unsecured Face ($BN)";
+  const faceTotalPrefKey  = "Total Preferred Face ($BN)";
 
+  // Upside — always Strike Zone
   const is52w = state.upsideMode === "52w";
   const upsideLabel = is52w ? "52W Peak Upside" : "Return to Par Upside";
   const upsideSup = "<sup>2</sup>";
-  const upsideSecKey = is52w
-    ? (isTarget ? "52W PEAK UPSIDE SECURED TARGET ($MM)" : "52W PEAK UPSIDE SECURED ($MM)")
-    : (isTarget ? "RETURN TO PAR SECURED TARGET ($MM)" : "RETURN TO PAR SECURED ($MM)");
-  const upsideUnsecKey = is52w
-    ? (isTarget ? "52W PEAK UPSIDE UNSECURED TARGET ($MM)" : "52W PEAK UPSIDE UNSECURED ($MM)")
-    : (isTarget ? "RETURN TO PAR UNSECURED TARGET ($MM)" : "RETURN TO PAR UNSECURED ($MM)");
-  const upsidePrefKey = is52w
-    ? (isTarget ? "52W PEAK UPSIDE PREFERRED TARGET ($MM)" : "52W PEAK UPSIDE PREFERRED ($MM)")
-    : (isTarget ? "RETURN TO PAR PREFERRED TARGET ($MM)" : "RETURN TO PAR PREFERRED ($MM)");
+  const upsideSecKey  = is52w ? "52W PEAK UPSIDE SECURED TARGET ($MM)"  : "RETURN TO PAR SECURED TARGET ($MM)";
+  const upsideUnsecKey = is52w ? "52W PEAK UPSIDE UNSECURED TARGET ($MM)" : "RETURN TO PAR UNSECURED TARGET ($MM)";
+  const upsidePrefKey  = is52w ? "52W PEAK UPSIDE PREFERRED TARGET ($MM)" : "RETURN TO PAR PREFERRED TARGET ($MM)";
 
+  // MV Change — always Strike Zone
   const is3m = state.moveMode === "3m";
-  const mvChangeKey = is3m
-    ? (isTarget ? "3M MV Change TARGET ($MM)" : "3M MV Change ($MM)")
-    : (isTarget ? "7D MV Change TARGET ($MM)" : "7D MV Change ($MM)");
+  const mvChangeKey   = is3m ? "3M MV Change TARGET ($MM)" : "7D MV Change TARGET ($MM)";
   const mvChangeLabel = is3m ? "3M MV △" : "7D MV △";
-  const modeTag = isTarget ? " (Target)" : " (All)";
 
-  const priceKey = isTarget ? "Price" : "Price All";
-  const yieldKey = isTarget ? "Yield" : "Yield All";
+  // Price & Yield — always Strike Zone
+  const priceKey = "Price";
+  const yieldKey = "Yield";
 
   const tableColumnOrder = [
     "Issuer", "Sector",
-    ...faceColumns,
-    upsideSecKey,
-    upsideUnsecKey,
-    upsidePrefKey,
+    faceStrikeSecKey, faceStrikeUnsecKey, faceStrikePrefKey,
+    faceTotalSecKey,  faceTotalUnsecKey,  faceTotalPrefKey,
+    upsideSecKey, upsideUnsecKey, upsidePrefKey,
     mvChangeKey,
     priceKey, yieldKey,
-    "COVERAGE PRIMARY",
-    "COVERAGE SECONDARY",
+    "COVERAGE PRIMARY", "COVERAGE SECONDARY",
   ];
 
   issuerHead.innerHTML = `
     <tr class="header-group-row">
       <th class="col-group-r"></th>
       <th></th>
-      <th colspan="3" class="group-header upside-toggle col-group-l" id="faceToggle" title="Click to toggle">${faceLabel} <em>(In $ Billions)</em><sup>1</sup> &#x21c4;</th>
-      <th colspan="3" class="group-header upside-toggle col-group-l" id="upsideToggle" title="Click to toggle">${upsideLabel}${modeTag} <em>(In $ Millions)</em>${upsideSup} &#x21c4;</th>
-      <th class="group-header upside-toggle col-group-l col-group-r" id="moveToggle" title="Click to toggle" style="min-width:155px">${mvChangeLabel}${modeTag}<br><em>(In $ Millions)</em><sup>3</sup> &#x21c4;</th>
-      <th colspan="2" class="group-header col-group-r">Price &amp; Yield${modeTag}</th>
-      <th colspan="2" class="group-header">Coverage (WIP)</th>
+      <th colspan="3" class="group-header col-group-l">FACE STRIKE ZONE <em>(In $ Billions)</em><sup>1</sup></th>
+      <th colspan="3" class="group-header col-group-l">FACE TOTAL <em>(In $ Billions)</em></th>
+      <th colspan="3" class="group-header upside-toggle col-group-l" id="upsideToggle" title="Click to toggle">${upsideLabel} <em>(In $ Millions)</em>${upsideSup} &#x21c4;</th>
+      <th class="group-header upside-toggle col-group-l" id="moveToggle" title="Click to toggle" style="min-width:155px">${mvChangeLabel}<br><em>(In $ Millions)</em><sup>3</sup> &#x21c4;</th>
+      <th colspan="2" class="group-header col-group-l">Price &amp; Yield</th>
+      <th colspan="2" class="group-header col-group-l">Coverage (WIP)</th>
     </tr>
     <tr>
       <th class="col-fit col-group-r">Issuer</th>
       <th class="col-fit">Sector</th>
-      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${faceSecKey}">Secured${sortIndicator(faceSecKey)}</button></th>
-      <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceUnsecKey}">Unsecured${sortIndicator(faceUnsecKey)}</button></th>
-      <th class="col-tight"><button type="button" class="sort-header" data-sort="${facePrefKey}">Preferred${sortIndicator(facePrefKey)}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${faceStrikeSecKey}">Secured${sortIndicator(faceStrikeSecKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceStrikeUnsecKey}">Unsecured${sortIndicator(faceStrikeUnsecKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceStrikePrefKey}">Preferred${sortIndicator(faceStrikePrefKey)}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${faceTotalSecKey}">Secured${sortIndicator(faceTotalSecKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceTotalUnsecKey}">Unsecured${sortIndicator(faceTotalUnsecKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceTotalPrefKey}">Preferred${sortIndicator(faceTotalPrefKey)}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${upsideSecKey}">Secured${sortIndicator(upsideSecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsideUnsecKey}">Unsecured${sortIndicator(upsideUnsecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsidePrefKey}">Preferred${sortIndicator(upsidePrefKey)}</button></th>
-      <th class="col-tight col-group-l col-group-r"><button type="button" class="sort-header" data-sort="${mvChangeKey}">${sortIndicator(mvChangeKey) || "&#x21c5;"}</button></th>
-      <th><button type="button" class="sort-header" data-sort="${priceKey}">Price<sup>4</sup>${sortIndicator(priceKey)}</button></th>
-      <th class="col-group-r"><button type="button" class="sort-header" data-sort="${yieldKey}">Yield<sup>5</sup>${sortIndicator(yieldKey)}</button></th>
-      <th>Primary</th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${mvChangeKey}">${sortIndicator(mvChangeKey) || "&#x21c5;"}</button></th>
+      <th class="col-group-l"><button type="button" class="sort-header" data-sort="${priceKey}">Price<sup>4</sup>${sortIndicator(priceKey)}</button></th>
+      <th><button type="button" class="sort-header" data-sort="${yieldKey}">Yield<sup>5</sup>${sortIndicator(yieldKey)}</button></th>
+      <th class="col-group-l">Primary</th>
       <th>Secondary</th>
     </tr>
   `;
-
-  document.getElementById("faceToggle").addEventListener("click", () => {
-    state.targetMode = state.targetMode === "target" ? "total" : "target";
-    renderIssuerTable();
-  });
 
   document.getElementById("upsideToggle").addEventListener("click", () => {
     state.upsideMode = state.upsideMode === "52w" ? "par" : "52w";
@@ -441,6 +431,14 @@ function renderIssuerTable() {
     state.moveMode = state.moveMode === "3m" ? "7d" : "3m";
     renderIssuerTable();
   });
+
+  const bodyBorderClass = {
+    [faceStrikeSecKey]:  "col-group-l",
+    [faceTotalSecKey]:   "col-group-l",
+    [upsideSecKey]:      "col-group-l",
+    [priceKey]:          "col-group-l",
+    "COVERAGE PRIMARY":  "col-group-l",
+  };
 
   issuerBody.innerHTML = state.filteredIssuers.map((row) => {
     const selected = state.selectedIssuer === row.PARENT_TICKER ? "selected" : "";
@@ -453,19 +451,21 @@ function renderIssuerTable() {
         return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${marker}</button></td>`;
       }
       if (["3M MV Change ($MM)", "7D MV Change ($MM)", "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)"].includes(column)) {
-        if (value === null || value === undefined || value === 0) return `<td class="col-tight col-group-l col-group-r">-</td>`;
+        if (value === null || value === undefined || value === 0) return `<td class="col-tight col-group-l">-</td>`;
         const v = Number(value);
         const cls = v > 0 ? "positive" : v < 0 ? "negative" : "neutral";
         const arrow = v > 0 ? "▲" : "▼";
-        return `<td class="col-tight col-group-l col-group-r price-move ${cls}">${arrow} ${fmt(Math.abs(v), 0)}</td>`;
+        return `<td class="col-tight col-group-l price-move ${cls}">${arrow} ${fmt(Math.abs(v), 0)}</td>`;
       }
       if (column === "COVERAGE PRIMARY" || column === "COVERAGE SECONDARY") {
         const slot = column === "COVERAGE PRIMARY" ? "primary" : "secondary";
         const ticker = row.PARENT_TICKER;
         const names = (state.coverageMap[ticker] || {})[slot] || [];
-        return `<td class="cov-cell">${renderCoverageCell(ticker, slot, names)}</td>`;
+        const covClass = column === "COVERAGE PRIMARY" ? "cov-cell col-group-l" : "cov-cell";
+        return `<td class="${covClass}">${renderCoverageCell(ticker, slot, names)}</td>`;
       }
-      return `<td>${fmtIssuer(column, value)}</td>`;
+      const bc = bodyBorderClass[column];
+      return `<td${bc ? ` class="${bc}"` : ""}>${fmtIssuer(column, value)}</td>`;
     }).join("");
     return `<tr class="${selected}">${cells}</tr>`;
   }).join("");
@@ -932,7 +932,7 @@ function applyFilters() {
     );
   }
 
-  const mvColumns = new Set(["3M MV Change ($MM)", "7D MV Change ($MM)", "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)"]);
+  const mvColumns = new Set(["3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)"]);
   rows.sort((left, right) => {
     const a = left[sortBy];
     const b = right[sortBy];
@@ -1298,9 +1298,23 @@ document.getElementById("glossaryButton").addEventListener("click", () => {
   if (existing) { existing.remove(); return; }
   const popup = document.createElement("div");
   popup.className = "glossary-popup";
-  popup.innerHTML = `<table>${glossaryEntries.map((e) =>
-    `<tr><td><sup>${e.sup}</sup></td><td><strong>${e.label}</strong></td><td>${e.def}</td></tr>`
-  ).join("")}</table>`;
+  popup.innerHTML = `
+    <table>${glossaryEntries.map((e) =>
+      `<tr><td><sup>${e.sup}</sup></td><td><strong>${e.label}</strong></td><td>${e.def}</td></tr>`
+    ).join("")}</table>
+    <div class="glossary-criteria">
+      <strong>Screening Criteria</strong>
+      <table>
+        <tr>
+          <td><strong>Loans</strong></td>
+          <td>Yield 9–50% &nbsp;|&nbsp; Price &lt; 95 &nbsp;|&nbsp; Tranche &ge; $700M</td>
+        </tr>
+        <tr>
+          <td><strong>Bonds</strong></td>
+          <td>Yield 10–50% &nbsp;|&nbsp; Price &lt; 100 &nbsp;|&nbsp; Tranche &ge; $400M &nbsp;|&nbsp; Maturity &gt; 2M &nbsp;|&nbsp; Non-subordinated</td>
+        </tr>
+      </table>
+    </div>`;
   document.getElementById("glossaryButton").parentElement.style.position = "relative";
   document.getElementById("glossaryButton").parentElement.appendChild(popup);
   setTimeout(() => document.addEventListener("click", (ev) => {
