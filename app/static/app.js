@@ -1307,11 +1307,11 @@ document.getElementById("glossaryButton").addEventListener("click", () => {
       <table>
         <tr>
           <td><strong>Loans</strong></td>
-          <td>Yield 9–50% &nbsp;|&nbsp; Price &lt; 95 &nbsp;|&nbsp; Tranche &ge; $700M</td>
+          <td>Yield 9–50% &nbsp;|&nbsp; Price &le; 95 &nbsp;|&nbsp; Tranche &ge; $700M &nbsp;|&nbsp; Maturity &gt; 2M</td>
         </tr>
         <tr>
           <td><strong>Bonds</strong></td>
-          <td>Yield 10–50% &nbsp;|&nbsp; Price &lt; 100 &nbsp;|&nbsp; Tranche &ge; $400M &nbsp;|&nbsp; Maturity &gt; 2M &nbsp;|&nbsp; Non-subordinated</td>
+          <td>Yield 10–50% &nbsp;|&nbsp; Price &le; 100 &nbsp;|&nbsp; Tranche &ge; $400M &nbsp;|&nbsp; Maturity &gt; 2M &nbsp;|&nbsp; Non-subordinated</td>
         </tr>
       </table>
     </div>`;

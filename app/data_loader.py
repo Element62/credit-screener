@@ -176,27 +176,29 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         else:
             is_usd = pd.Series(True, index=group.index)
 
-        # Loan eligibility: yield 9–50, price < 95, USD only
+        # Loan eligibility: yield 9–50% inclusive, price ≤ 95, face ≥ $700M, maturity > 2M, USD only
         loan_eligible = (
             normal_mask
             & not_defaulted
             & is_loan
             & is_usd
+            & face.notna() & (face >= 700_000_000)
             & bond_yield.notna()
-            & (bond_yield > 9) & (bond_yield < 50)
-            & px.notna() & (px < 95)
+            & (bond_yield >= 9) & (bond_yield <= 50)
+            & px.notna() & (px <= 95)
+            & maturity_ok
         )
 
-        # Bond eligibility: yield 10–50, face ≥ $200M, price < 100, maturity > 2M, USD only
+        # Bond/preferred eligibility: yield 10–50% inclusive, face ≥ $400M, price ≤ 100, maturity > 2M, USD only
         bond_eligible = (
             normal_mask
             & not_defaulted
             & ~is_loan
             & is_usd
-            & face.notna() & (face >= 200_000_000)
+            & face.notna() & (face >= 400_000_000)
             & bond_yield.notna()
-            & (bond_yield > 10) & (bond_yield < 50)
-            & px.notna() & (px < 100)
+            & (bond_yield >= 10) & (bond_yield <= 50)
+            & px.notna() & (px <= 100)
             & maturity_ok
         )
 
@@ -209,7 +211,7 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
 
         criteria_face_mask = secured_criteria | unsecured_criteria | pref_criteria
 
-        eligible_yield_screen_mask = bond_eligible & px.notna() & (px < 100)
+        eligible_yield_screen_mask = bond_eligible
         criteria_face_sum = face[criteria_face_mask].sum()
         screen_mask = criteria_face_mask & px.notna() & (px > 0)
         px_face_sum = face[screen_mask].sum()
@@ -612,7 +614,7 @@ def load_workbook(path: Path) -> WorkbookData:
         na_position="last",
     )
 
-    # Build excluded bonds: in summary_df but not meeting screening criteria
+    # Build excluded securities: those not meeting strike zone criteria
     exc = summary_df.copy()
     exc_face = pd.to_numeric(exc["AMT_OUTSTANDING"], errors="coerce")
     exc_yield = pd.to_numeric(exc["YIELD"], errors="coerce") if "YIELD" in exc.columns else pd.Series(index=exc.index, dtype="float64")
@@ -621,47 +623,91 @@ def load_workbook(path: Path) -> WorkbookData:
     exc_rank = exc["PAYMENT_RANK"].fillna("").astype(str).str.lower()
     exc_defaulted = exc["_IS_DEFAULTED"] if "_IS_DEFAULTED" in exc.columns else pd.Series(False, index=exc.index)
     exc_preferred = exc["_IS_PREFERRED"] if "_IS_PREFERRED" in exc.columns else pd.Series(False, index=exc.index)
+    exc_is_loan = exc["LOAN_TYPE"].notna() if "LOAN_TYPE" in exc.columns else pd.Series(False, index=exc.index)
+    if "ISS_CURRENCY" in exc.columns:
+        exc_is_usd = exc["ISS_CURRENCY"].fillna("USD").astype(str).str.upper().eq("USD")
+    else:
+        exc_is_usd = pd.Series(True, index=exc.index)
     today_ts = pd.Timestamp(anchor_date) if anchor_date else pd.Timestamp.now()
-    mat_cutoff = today_ts + pd.DateOffset(years=1)
-    common_criteria = (
-        exc_face.notna() & (exc_face >= 200_000_000)
-        & exc_yield.notna() & (exc_yield >= 7)
-        & exc_px.notna() & (exc_px < 90)
-        & (exc_mat > mat_cutoff)
+    mat_2m = today_ts + pd.DateOffset(months=2)
+
+    bond_screen_pass = (
+        ~exc_is_loan & exc_is_usd & ~exc_preferred
+        & exc_face.notna() & (exc_face >= 400_000_000)
+        & exc_yield.notna() & (exc_yield >= 10) & (exc_yield <= 50)
+        & exc_px.notna() & (exc_px <= 100)
+        & (exc_mat > mat_2m)
+        & ~exc_rank.str.contains("subordinated")
         & ~exc_defaulted
     )
-    bond_pass = common_criteria & ~exc_rank.str.contains("subordinated") & ~exc_preferred
-    pref_pass = common_criteria & exc_preferred
-    screen_pass = bond_pass | pref_pass
+    pref_screen_pass = (
+        ~exc_is_loan & exc_is_usd & exc_preferred
+        & exc_face.notna() & (exc_face >= 400_000_000)
+        & exc_yield.notna() & (exc_yield >= 10) & (exc_yield <= 50)
+        & exc_px.notna() & (exc_px <= 100)
+        & (exc_mat > mat_2m)
+        & ~exc_defaulted
+    )
+    loan_screen_pass = (
+        exc_is_loan & exc_is_usd
+        & exc_face.notna() & (exc_face >= 700_000_000)
+        & exc_yield.notna() & (exc_yield >= 9) & (exc_yield <= 50)
+        & exc_px.notna() & (exc_px <= 95)
+        & (exc_mat > mat_2m)
+        & ~exc_defaulted
+    )
+    screen_pass = bond_screen_pass | pref_screen_pass | loan_screen_pass
     excluded_df = exc[~screen_pass].copy()
     if "ISSUER_NAME" in excluded_df.columns:
         excluded_df["Issuer"] = excluded_df["ISSUER_NAME"].fillna(excluded_df["PARENT_TICKER"])
     else:
         excluded_df["Issuer"] = excluded_df["PARENT_TICKER"]
     excluded_df["AMT_OUTSTANDING_MM"] = pd.to_numeric(excluded_df["AMT_OUTSTANDING"], errors="coerce") / 1e6
-    # Tag exclusion reason
+    # Tag exclusion reason per instrument type
     reasons = []
     for _, r in exc.iterrows():
         r_reasons = []
+        is_loan_row = pd.notna(r.get("LOAN_TYPE"))
         f = pd.to_numeric(r.get("AMT_OUTSTANDING"), errors="coerce")
         y = pd.to_numeric(r.get("YIELD"), errors="coerce")
         p = pd.to_numeric(r.get("PX_MID"), errors="coerce")
         m = pd.to_datetime(r.get("MATURITY"), errors="coerce")
-        if pd.isna(f) or f < 200_000_000:
-            r_reasons.append("Face < $200M")
-        if pd.isna(y):
-            r_reasons.append("No Yield")
-        elif y < 7:
-            r_reasons.append("Yield < 7%")
-        if pd.isna(p):
-            r_reasons.append("No Price")
-        elif p >= 90:
-            r_reasons.append("Price >= 90")
-        if pd.notna(m) and m <= mat_cutoff:
-            r_reasons.append("Maturity <= 1Y")
         rk = str(r.get("PAYMENT_RANK") or "").lower()
-        if "subordinated" in rk:
-            r_reasons.append("Subordinated")
+        ccy = str(r.get("ISS_CURRENCY") or "USD").upper()
+        if ccy != "USD":
+            r_reasons.append("Non-USD")
+        elif is_loan_row:
+            if pd.isna(f) or f < 700_000_000:
+                r_reasons.append("Face < $700M")
+            if pd.isna(y):
+                r_reasons.append("No Yield")
+            elif y < 9:
+                r_reasons.append("Yield < 9%")
+            elif y > 50:
+                r_reasons.append("Yield > 50%")
+            if pd.isna(p):
+                r_reasons.append("No Price")
+            elif p > 95:
+                r_reasons.append("Price > 95")
+            if pd.notna(m) and m <= mat_2m:
+                r_reasons.append("Maturity ≤2M")
+        else:
+            if pd.isna(f) or f < 400_000_000:
+                r_reasons.append("Face < $400M")
+            if pd.isna(y):
+                r_reasons.append("No Yield")
+            elif y < 10:
+                r_reasons.append("Yield < 10%")
+            elif y > 50:
+                r_reasons.append("Yield > 50%")
+            if pd.isna(p):
+                r_reasons.append("No Price")
+            elif p > 100:
+                r_reasons.append("Price > 100")
+            if pd.notna(m) and m <= mat_2m:
+                r_reasons.append("Maturity ≤2M")
+            if "subordinated" in rk:
+                r_reasons.append("Subordinated")
         if r.get("_IS_DEFAULTED"):
             r_reasons.append("Defaulted")
         reasons.append("; ".join(r_reasons) if r_reasons else "")
