@@ -705,6 +705,16 @@ def admin_reload(_: str = Depends(get_current_user)) -> JSONResponse:
     return JSONResponse({"ok": True, "metadata": dataset.metadata})
 
 
+@app.get("/api/debug/instrument-columns")
+def debug_instrument_columns(_: str = Depends(get_current_user)) -> JSONResponse:
+    dataset = ensure_data_loaded()
+    if not dataset.instrument_rows:
+        return JSONResponse({"columns": []})
+    all_keys = sorted(dataset.instrument_rows[0].keys())
+    lqa_keys = [k for k in all_keys if "LQA" in k.upper() or "VOLUME" in k.upper() or "DAILY" in k.upper()]
+    return JSONResponse({"lqa_and_volume_keys": lqa_keys, "all_keys": all_keys})
+
+
 @app.post("/api/admin/upload")
 def admin_upload(workbook: UploadFile = File(...), _: str = Depends(get_current_user)) -> JSONResponse:
     if not workbook.filename or not workbook.filename.lower().endswith(".xlsx"):

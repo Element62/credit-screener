@@ -216,7 +216,9 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
         screen_mask = criteria_face_mask & px.notna() & (px > 0)
         px_face_sum = face[screen_mask].sum()
         wtavg_px = (px[screen_mask] * face[screen_mask]).sum() / px_face_sum if px_face_sum > 0 else pd.NA
-        wtavg_yield = (bond_yield[screen_mask] * face[screen_mask]).sum() / px_face_sum if px_face_sum > 0 else pd.NA
+        mv = face * px / 100.0  # market value weight for yield
+        mv_sum = mv[screen_mask].sum()
+        wtavg_yield = (bond_yield[screen_mask] * mv[screen_mask]).sum() / mv_sum if mv_sum > 0 else pd.NA
         max_yield = bond_yield[eligible_yield_screen_mask].max() if eligible_yield_screen_mask.any() else pd.NA
         ranks = group["PAYMENT_RANK"].fillna("").astype(str)
         rank_order = ranks.map(SENIORITY_ORDER).fillna(max_known_rank + 1)
@@ -315,6 +317,8 @@ def _issuer_metrics(df: pd.DataFrame, anchor_date: str) -> pd.DataFrame:
                 "ISSUER_MV_CHANGE_7D_MM": group.loc[cap_stack_mask, "MV_CHANGE_7D_MM"].sum() if "MV_CHANGE_7D_MM" in group.columns else pd.NA,
                 "ISSUER_MV_CHANGE_3M_TARGET_MM": group.loc[screen_mask, "MV_CHANGE_3M_MM"].sum() if "MV_CHANGE_3M_MM" in group.columns else pd.NA,
                 "ISSUER_MV_CHANGE_7D_TARGET_MM": group.loc[screen_mask, "MV_CHANGE_7D_MM"].sum() if "MV_CHANGE_7D_MM" in group.columns else pd.NA,
+                "ISSUER_MV_CHANGE_3M_TARGET_PCT": (group.loc[screen_mask, "MV_CHANGE_3M_MM"].sum() / (mv_sum / 1e6) * 100) if mv_sum > 0 and "MV_CHANGE_3M_MM" in group.columns else pd.NA,
+                "ISSUER_MV_CHANGE_7D_TARGET_PCT": (group.loc[screen_mask, "MV_CHANGE_7D_MM"].sum() / (mv_sum / 1e6) * 100) if mv_sum > 0 and "MV_CHANGE_7D_MM" in group.columns else pd.NA,
             }
         )
 
@@ -516,6 +520,8 @@ def load_workbook(path: Path) -> WorkbookData:
                 "ISSUER_MV_CHANGE_7D_MM": "7D MV Change ($MM)",
                 "ISSUER_MV_CHANGE_3M_TARGET_MM": "3M MV Change TARGET ($MM)",
                 "ISSUER_MV_CHANGE_7D_TARGET_MM": "7D MV Change TARGET ($MM)",
+                "ISSUER_MV_CHANGE_3M_TARGET_PCT": "3M MV Pct Change",
+                "ISSUER_MV_CHANGE_7D_TARGET_PCT": "7D MV Pct Change",
             }
         )
     )
@@ -528,9 +534,26 @@ def load_workbook(path: Path) -> WorkbookData:
     issuer_display["Secured Face ($BN)"] = issuer_display["Secured Face ($MM)"] / 1000.0
     issuer_display["Unsecured Face ($BN)"] = issuer_display["Unsecured Face ($MM)"] / 1000.0
     issuer_display["Preferred Face ($BN)"] = issuer_display["Preferred Face ($MM)"] / 1000.0
-    issuer_display["Total Secured Face ($BN)"] = issuer_display["Total Secured Face ($MM)"] / 1000.0
-    issuer_display["Total Unsecured Face ($BN)"] = issuer_display["Total Unsecured Face ($MM)"] / 1000.0
-    issuer_display["Total Preferred Face ($BN)"] = issuer_display["Total Preferred Face ($MM)"] / 1000.0
+    issuer_display["Face Strike Zone ($MM)"] = (
+        issuer_display["Secured Face ($MM)"].fillna(0) +
+        issuer_display["Unsecured Face ($MM)"].fillna(0) +
+        issuer_display["Preferred Face ($MM)"].fillna(0)
+    )
+    issuer_display["Face Total All ($MM)"] = (
+        issuer_display["Total Secured Face ($MM)"].fillna(0) +
+        issuer_display["Total Unsecured Face ($MM)"].fillna(0) +
+        issuer_display["Total Preferred Face ($MM)"].fillna(0)
+    )
+    issuer_display["52W PEAK UPSIDE TOTAL TARGET ($MM)"] = (
+        issuer_display["52W PEAK UPSIDE SECURED TARGET ($MM)"].fillna(0) +
+        issuer_display["52W PEAK UPSIDE UNSECURED TARGET ($MM)"].fillna(0) +
+        issuer_display["52W PEAK UPSIDE PREFERRED TARGET ($MM)"].fillna(0)
+    )
+    issuer_display["RETURN TO PAR TOTAL TARGET ($MM)"] = (
+        issuer_display["RETURN TO PAR SECURED TARGET ($MM)"].fillna(0) +
+        issuer_display["RETURN TO PAR UNSECURED TARGET ($MM)"].fillna(0) +
+        issuer_display["RETURN TO PAR PREFERRED TARGET ($MM)"].fillna(0)
+    )
     issuer_display["Maturity Within 1Y"] = issuer_display.apply(lambda r: _wall_label(r.get("WALL_LT1Y_MM"), r.get("WALL_LT1Y_PCT")), axis=1)
     issuer_display["COVERAGE PRIMARY"] = pd.NA
     issuer_display["COVERAGE SECONDARY"] = pd.NA
@@ -544,6 +567,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "3M Price Move", "7D Price Move",
         "3M MV Change ($MM)", "7D MV Change ($MM)",
         "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)",
+        "3M MV Pct Change", "7D MV Pct Change",
         "52W PEAK UPSIDE SECURED ($MM)",
         "52W PEAK UPSIDE UNSECURED ($MM)",
         "52W PEAK UPSIDE PREFERRED ($MM)",
@@ -561,7 +585,9 @@ def load_workbook(path: Path) -> WorkbookData:
         "COVERAGE PRIMARY", "COVERAGE SECONDARY",
         "Adj Unsecured Sprd Movement (bps)", "Sprd Movement Label",
         "Total Face ($MM)", "Secured Face ($MM)", "Unsecured Face ($MM)", "Preferred Face ($MM)",
-        "Total Secured Face ($BN)", "Total Unsecured Face ($BN)", "Total Preferred Face ($BN)", "Max Yield",
+        "Total Secured Face ($MM)", "Total Unsecured Face ($MM)", "Total Preferred Face ($MM)",
+        "Face Strike Zone ($MM)", "Face Total All ($MM)",
+        "52W PEAK UPSIDE TOTAL TARGET ($MM)", "RETURN TO PAR TOTAL TARGET ($MM)", "Max Yield",
         "HAS_DEFAULTED",
     ]
     issuer_display = issuer_display[issuer_display.get("Sector", pd.Series(dtype=str)).fillna("").astype(str).str.lower() != "government"]
@@ -579,7 +605,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "YIELD", "YIELD_T90", "DIST_TO_PAR", "DISLOCATION_MM", "PX_HIGH_52W", "DATE_OF_HIGH",
         "PX_LOW_52W", "DATE_OF_LOW", "DISLOCATION_52W_MM", "OAS", "OAS_T90", "OAS_DELTA",
         "DISTRESS_TIER", "SECTOR", "COUNTRY", "CPN_TYPE", "CPN_VALUE", "LAST_MONTH_VOLUME",
-        "ISS_CURRENCY", "_IS_DEFAULTED",
+        "ISS_CURRENCY", "LQA_LIQUIDITY_SCORE", "EXPECTED_DAILY_VOLUME", "_IS_DEFAULTED",
     ]
     instruments = summary_df[[col for col in instrument_columns if col in summary_df.columns]].copy()
     instruments["AMT_OUTSTANDING_MM"] = pd.to_numeric(instruments["AMT_OUTSTANDING"], errors="coerce") / 1e6
@@ -588,6 +614,9 @@ def load_workbook(path: Path) -> WorkbookData:
         pref_mask = instruments["PAYMENT_RANK"].fillna("").astype(str).str.lower().eq("preferred")
         instruments["LAST_30D_VOLUME_MM"] = raw_vol / 1e3
         instruments.loc[pref_mask, "LAST_30D_VOLUME_MM"] = raw_vol[pref_mask] / 1e6
+    if "EXPECTED_DAILY_VOLUME" in instruments.columns:
+        raw_edv = pd.to_numeric(instruments["EXPECTED_DAILY_VOLUME"], errors="coerce")
+        instruments["LQA_EXPECTED_DAILY_VOLUME_MM"] = raw_edv / 1e6
     # Null out yield and price movement for defaulted bonds
     if "_IS_DEFAULTED" in instruments.columns:
         dmask = instruments["_IS_DEFAULTED"].fillna(False).astype(bool)
@@ -724,6 +753,7 @@ def load_workbook(path: Path) -> WorkbookData:
     loan_columns = [
         "ID", "PARENT_TICKER", "NAME", "LOAN_TYPE", "PAYMENT_RANK", "SECTOR",
         "AMT_OUTSTANDING", "PX_MID", "YIELD", "MATURITY",
+        "RESET_INDEX", "LN_CURRENT_MARGIN", "CPN_VALUE",
         "PX_HIGH_52W", "DATE_OF_HIGH", "PX_LOW_52W", "DATE_OF_LOW",
         "PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM",
     ]

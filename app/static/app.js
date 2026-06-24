@@ -20,6 +20,8 @@ const state = {
   loanFilterValues: { yieldMin: 9, yieldMax: 50, priceMax: 95 },
   upsideMode: "52w",
   moveMode: "3m",
+  mvAbsSort: true,
+  faceStrikeZonePct: false,
   sortField: "52W PEAK UPSIDE SECURED TARGET ($MM)",
   sortDirection: "desc",
   coverageMap: {},
@@ -129,7 +131,8 @@ const detailColumns = [
   { key: "PRICE_MOVE_7D", label: "7D Price Move" },
   { key: "PRICE_MOVE_3M", label: "3M Price Move" },
   { key: "YIELD", label: "Yield" },
-  { key: "LAST_30D_VOLUME_MM", label: "Last Month Traded Volume ($MM)" },
+  { key: "LQA_LIQUIDITY_SCORE", label: "Liquidity Score" },
+  { key: "LQA_EXPECTED_DAILY_VOLUME_MM", label: "Exp. Daily Volume ($MM)" },
   { key: "PRICE_RANGE", label: "Price Range" },
 ];
 
@@ -175,10 +178,10 @@ const COVERAGE_ANALYSTS = [
 ];
 
 const zeroAsDashColumns = new Set([
-  "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
-  "Total Secured Face ($BN)", "Total Unsecured Face ($BN)", "Total Preferred Face ($BN)",
-  "52W PEAK UPSIDE SECURED TARGET ($MM)", "52W PEAK UPSIDE UNSECURED TARGET ($MM)", "52W PEAK UPSIDE PREFERRED TARGET ($MM)",
-  "RETURN TO PAR SECURED TARGET ($MM)", "RETURN TO PAR UNSECURED TARGET ($MM)", "RETURN TO PAR PREFERRED TARGET ($MM)",
+  "Secured Face ($MM)", "Unsecured Face ($MM)", "Preferred Face ($MM)", "Face Strike Zone ($MM)",
+  "Total Secured Face ($MM)", "Total Unsecured Face ($MM)", "Total Preferred Face ($MM)", "Face Total All ($MM)",
+  "52W PEAK UPSIDE SECURED TARGET ($MM)", "52W PEAK UPSIDE UNSECURED TARGET ($MM)", "52W PEAK UPSIDE PREFERRED TARGET ($MM)", "52W PEAK UPSIDE TOTAL TARGET ($MM)",
+  "RETURN TO PAR SECURED TARGET ($MM)", "RETURN TO PAR UNSECURED TARGET ($MM)", "RETURN TO PAR PREFERRED TARGET ($MM)", "RETURN TO PAR TOTAL TARGET ($MM)",
 ]);
 
 function fmtIssuer(column, value) {
@@ -216,7 +219,7 @@ function updateCoverageCells(ticker) {
 
 function detailDigits(column) {
   if (column === "AMT_OUTSTANDING_MM") return 0;
-  if (["PX_MID", "PRICE_MOVE_3M", "PRICE_MOVE_7D", "YIELD", "LAST_30D_VOLUME_MM", "PX_HIGH_52W", "PX_LOW_52W"].includes(column)) return 1;
+  if (["PX_MID", "PRICE_MOVE_3M", "PRICE_MOVE_7D", "YIELD", "LQA_EXPECTED_DAILY_VOLUME_MM", "PX_HIGH_52W", "PX_LOW_52W"].includes(column)) return 1;
   if (["OAS", "OAS_DELTA"].includes(column)) return 0;
   return 2;
 }
@@ -346,35 +349,40 @@ function renderMoverPriceRange(row) {
 }
 
 const glossaryEntries = [
-  { sup: "1", label: "Face ($BN)", def: "<strong>Strike Zone:</strong> face value of instruments meeting screening criteria (see below). <strong>Total:</strong> face value of all non-defaulted instruments regardless of screening criteria." },
+  { sup: "1", label: "Face ($MM)", def: "<strong>Strike Zone:</strong> face value of instruments meeting screening criteria (see below). <strong>Total:</strong> face value of all non-defaulted instruments regardless of screening criteria." },
   { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside for Strike Zone securities, assuming prices revert to 52-week highs (52W) or par (Return to Par)." },
   { sup: "3", label: "3M / 7D MV Change", def: "Aggregate market value change ($MM) for Strike Zone securities over the selected time period." },
   { sup: "4", label: "Price", def: "Face-weighted average mid price across Strike Zone securities." },
   { sup: "5", label: "Yield", def: "Face-weighted average yield to maturity across Strike Zone securities." },
-  { sup: "6", label: "Last Month Traded Volume ($MM)", def: "Traded volume (in thousands of USD) for the last month based on all trades reported to FINRA TRACE" },
+  { sup: "6", label: "Exp. Daily Volume ($MM)", def: "Bloomberg LQA Expected Daily Volume: estimated notional a single firm could sell in one day within the current bid-ask spread. Modeled using reference data (amount outstanding, maturity, coupon), market data (trade count, dealer quotes), and pricing data (spread, volatility)." },
+  { sup: "7", label: "Liquidity Score", def: "Bloomberg LQA score: a 1–100 percentile ranking of estimated liquidation cost within an asset class. 100 = most liquid (lowest cost); 1 = least liquid. Scores are relative to peers — there is no absolute meaning to any specific value." },
 ];
 
 function renderIssuerTable() {
   // Face — Strike Zone (criteria-eligible)
-  const faceStrikeSecKey  = "Secured Face ($BN)";
-  const faceStrikeUnsecKey = "Unsecured Face ($BN)";
-  const faceStrikePrefKey  = "Preferred Face ($BN)";
+  const faceStrikeSecKey   = "Secured Face ($MM)";
+  const faceStrikeUnsecKey = "Unsecured Face ($MM)";
+  const faceStrikePrefKey  = "Preferred Face ($MM)";
+  const faceStrikeTotalKey = "Face Strike Zone ($MM)";
   // Face — Total (all non-defaulted)
-  const faceTotalSecKey  = "Total Secured Face ($BN)";
-  const faceTotalUnsecKey = "Total Unsecured Face ($BN)";
-  const faceTotalPrefKey  = "Total Preferred Face ($BN)";
+  const faceTotalSecKey    = "Total Secured Face ($MM)";
+  const faceTotalUnsecKey  = "Total Unsecured Face ($MM)";
+  const faceTotalPrefKey   = "Total Preferred Face ($MM)";
+  const faceTotalTotalKey  = "Face Total All ($MM)";
 
   // Upside — always Strike Zone
   const is52w = state.upsideMode === "52w";
   const upsideLabel = is52w ? "52W Peak Upside" : "Return to Par Upside";
   const upsideSup = "<sup>2</sup>";
-  const upsideSecKey  = is52w ? "52W PEAK UPSIDE SECURED TARGET ($MM)"  : "RETURN TO PAR SECURED TARGET ($MM)";
+  const upsideSecKey   = is52w ? "52W PEAK UPSIDE SECURED TARGET ($MM)"  : "RETURN TO PAR SECURED TARGET ($MM)";
   const upsideUnsecKey = is52w ? "52W PEAK UPSIDE UNSECURED TARGET ($MM)" : "RETURN TO PAR UNSECURED TARGET ($MM)";
   const upsidePrefKey  = is52w ? "52W PEAK UPSIDE PREFERRED TARGET ($MM)" : "RETURN TO PAR PREFERRED TARGET ($MM)";
+  const upsideTotalKey = is52w ? "52W PEAK UPSIDE TOTAL TARGET ($MM)"     : "RETURN TO PAR TOTAL TARGET ($MM)";
 
   // MV Change — always Strike Zone
   const is3m = state.moveMode === "3m";
   const mvChangeKey   = is3m ? "3M MV Change TARGET ($MM)" : "7D MV Change TARGET ($MM)";
+  const mvPctKey      = is3m ? "3M MV Pct Change"          : "7D MV Pct Change";
   const mvChangeLabel = is3m ? "3M MV △" : "7D MV △";
 
   // Price & Yield — always Strike Zone
@@ -383,10 +391,10 @@ function renderIssuerTable() {
 
   const tableColumnOrder = [
     "Issuer", "Sector",
-    faceStrikeSecKey, faceStrikeUnsecKey, faceStrikePrefKey,
-    faceTotalSecKey,  faceTotalUnsecKey,  faceTotalPrefKey,
-    upsideSecKey, upsideUnsecKey, upsidePrefKey,
-    mvChangeKey,
+    faceStrikeSecKey, faceStrikeUnsecKey, faceStrikePrefKey, faceStrikeTotalKey,
+    faceTotalSecKey,  faceTotalUnsecKey,  faceTotalPrefKey,  faceTotalTotalKey,
+    upsideSecKey, upsideUnsecKey, upsidePrefKey, upsideTotalKey,
+    mvChangeKey, mvPctKey,
     priceKey, yieldKey,
     "COVERAGE PRIMARY", "COVERAGE SECONDARY",
   ];
@@ -395,11 +403,11 @@ function renderIssuerTable() {
     <tr class="header-group-row">
       <th class="col-group-r"></th>
       <th></th>
-      <th colspan="3" class="group-header col-group-l">FACE STRIKE ZONE <em>(In $ Billions)</em><sup>1</sup></th>
-      <th colspan="3" class="group-header col-group-l">FACE TOTAL <em>(In $ Billions)</em></th>
-      <th colspan="3" class="group-header upside-toggle col-group-l" id="upsideToggle" title="Click to toggle">${upsideLabel} <em>(In $ Millions)</em>${upsideSup} &#x21c4;</th>
-      <th class="group-header upside-toggle col-group-l" id="moveToggle" title="Click to toggle" style="min-width:155px">${mvChangeLabel}<br><em>(In $ Millions)</em><sup>3</sup> &#x21c4;</th>
-      <th colspan="2" class="group-header col-group-l">Price &amp; Yield</th>
+      <th colspan="4" class="group-header col-group-l">FACE STRIKE ZONE <em>($MM)</em><sup>1</sup> <button type="button" id="faceStrikePctToggle" class="mv-abs-toggle${state.faceStrikeZonePct ? " active" : ""}">%</button></th>
+      <th colspan="4" class="group-header col-group-l">FACE TOTAL <em>($MM)</em></th>
+      <th colspan="4" class="group-header upside-toggle col-group-l" id="upsideToggle" title="Click to toggle">${upsideLabel} <em>(Strike Zone, $MM)</em>${upsideSup} &#x21c4;</th>
+      <th colspan="2" class="group-header upside-toggle col-group-l" id="moveToggle" title="Click to toggle" style="min-width:155px">${mvChangeLabel}<br><em>(Strike Zone)</em><sup>3</sup> &#x21c4;</th>
+      <th colspan="2" class="group-header col-group-l">Price &amp; Yield <em>(Strike Zone)</em></th>
       <th colspan="2" class="group-header col-group-l">Coverage (WIP)</th>
     </tr>
     <tr>
@@ -408,13 +416,17 @@ function renderIssuerTable() {
       <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${faceStrikeSecKey}">Secured${sortIndicator(faceStrikeSecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceStrikeUnsecKey}">Unsecured${sortIndicator(faceStrikeUnsecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceStrikePrefKey}">Preferred${sortIndicator(faceStrikePrefKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceStrikeTotalKey}">Total${sortIndicator(faceStrikeTotalKey)}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${faceTotalSecKey}">Secured${sortIndicator(faceTotalSecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceTotalUnsecKey}">Unsecured${sortIndicator(faceTotalUnsecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceTotalPrefKey}">Preferred${sortIndicator(faceTotalPrefKey)}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceTotalTotalKey}">Total${sortIndicator(faceTotalTotalKey)}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${upsideSecKey}">Secured${sortIndicator(upsideSecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsideUnsecKey}">Unsecured${sortIndicator(upsideUnsecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsidePrefKey}">Preferred${sortIndicator(upsidePrefKey)}</button></th>
-      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${mvChangeKey}">${sortIndicator(mvChangeKey) || "&#x21c5;"}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsideTotalKey}">Total${sortIndicator(upsideTotalKey)}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${mvChangeKey}">$MM${sortIndicator(mvChangeKey) || "&#x21c5;"}</button><button type="button" id="mvAbsToggle" class="mv-abs-toggle${state.mvAbsSort ? " active" : ""}">ABS</button></th>
+      <th class="col-tight"><button type="button" class="sort-header" data-sort="${mvPctKey}">%${sortIndicator(mvPctKey)}</button></th>
       <th class="col-group-l"><button type="button" class="sort-header" data-sort="${priceKey}">Price<sup>4</sup>${sortIndicator(priceKey)}</button></th>
       <th><button type="button" class="sort-header" data-sort="${yieldKey}">Yield<sup>5</sup>${sortIndicator(yieldKey)}</button></th>
       <th class="col-group-l">Primary</th>
@@ -432,12 +444,33 @@ function renderIssuerTable() {
     renderIssuerTable();
   });
 
+  document.getElementById("faceStrikePctToggle").addEventListener("click", () => {
+    state.faceStrikeZonePct = !state.faceStrikeZonePct;
+    renderIssuerTable();
+  });
+
+  document.getElementById("mvAbsToggle").addEventListener("click", (e) => {
+    e.stopPropagation();
+    state.mvAbsSort = !state.mvAbsSort;
+    const mvCols = new Set(["3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)", "3M MV Pct Change", "7D MV Pct Change"]);
+    if (mvCols.has(state.sortField)) state.sortDirection = "desc";
+    applyFilters();
+    renderIssuerTable();
+  });
+
   const bodyBorderClass = {
-    [faceStrikeSecKey]:  "col-group-l",
-    [faceTotalSecKey]:   "col-group-l",
-    [upsideSecKey]:      "col-group-l",
-    [priceKey]:          "col-group-l",
-    "COVERAGE PRIMARY":  "col-group-l",
+    [faceStrikeSecKey]: "col-group-l",
+    [faceTotalSecKey]:  "col-group-l",
+    [upsideSecKey]:     "col-group-l",
+    [priceKey]:         "col-group-l",
+    "COVERAGE PRIMARY": "col-group-l",
+  };
+
+  const faceStrikePctMap = {
+    [faceStrikeSecKey]:   faceTotalSecKey,
+    [faceStrikeUnsecKey]: faceTotalUnsecKey,
+    [faceStrikePrefKey]:  faceTotalPrefKey,
+    [faceStrikeTotalKey]: faceTotalTotalKey,
   };
 
   issuerBody.innerHTML = state.filteredIssuers.map((row) => {
@@ -457,12 +490,28 @@ function renderIssuerTable() {
         const arrow = v > 0 ? "▲" : "▼";
         return `<td class="col-tight col-group-l price-move ${cls}">${arrow} ${fmt(Math.abs(v), 0)}</td>`;
       }
+      if (column === "3M MV Pct Change" || column === "7D MV Pct Change") {
+        if (value === null || value === undefined || value === 0) return `<td class="col-tight">-</td>`;
+        const v = Number(value);
+        const cls = v > 0 ? "positive" : v < 0 ? "negative" : "neutral";
+        const arrow = v > 0 ? "▲" : "▼";
+        return `<td class="col-tight price-move ${cls}">${arrow} ${fmt(Math.abs(v), 1)}%</td>`;
+      }
       if (column === "COVERAGE PRIMARY" || column === "COVERAGE SECONDARY") {
         const slot = column === "COVERAGE PRIMARY" ? "primary" : "secondary";
         const ticker = row.PARENT_TICKER;
         const names = (state.coverageMap[ticker] || {})[slot] || [];
         const covClass = column === "COVERAGE PRIMARY" ? "cov-cell col-group-l" : "cov-cell";
         return `<td class="${covClass}">${renderCoverageCell(ticker, slot, names)}</td>`;
+      }
+      if (state.faceStrikeZonePct && column in faceStrikePctMap) {
+        const bc = bodyBorderClass[column];
+        const cls = bc ? ` class="${bc}"` : "";
+        const v = Number(value);
+        if (value == null || isNaN(v) || v === 0) return `<td${cls}>-</td>`;
+        const denom = Number(row[faceStrikePctMap[column]]);
+        const pctStr = denom > 0 ? ` <em class="face-pct">(${Math.round(v / denom * 100)}%)</em>` : "";
+        return `<td${cls}>${fmtIssuer(column, value)}${pctStr}</td>`;
       }
       const bc = bodyBorderClass[column];
       return `<td${bc ? ` class="${bc}"` : ""}>${fmtIssuer(column, value)}</td>`;
@@ -483,7 +532,8 @@ function renderIssuerTable() {
   document.querySelectorAll("[data-sort]").forEach((button) => {
     button.addEventListener("click", () => {
       const column = button.dataset.sort;
-      if (state.sortField === column) {
+      const isMvCol = ["3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)", "3M MV Pct Change", "7D MV Pct Change"].includes(column);
+      if (state.sortField === column && !(isMvCol && state.mvAbsSort)) {
         state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
       } else {
         state.sortField = column;
@@ -604,7 +654,7 @@ const loanColumns = [
   { key: "AMT_OUTSTANDING_MM", label: "Amt Out",     sortable: true, tdClass: "col-tight col-group-l" },
   { key: "PX_MID",             label: "Current Px",  tdClass: "col-tight col-group-l" },
   { key: "YIELD",              label: "Yield",        tdClass: "col-tight" },
-  { key: "CPN_VALUE",          label: "Coupon",       tdClass: "col-tight" },
+  { key: "COUPON_DISPLAY",      label: "Coupon",       tdClass: "col-tight" },
   { key: "PRICE_MOVE_3M",      label: "3M Px Move",  sortable: true, tdClass: "col-tight col-group-l" },
   { key: "PRICE_MOVE_7D",      label: "7D Px Move",  sortable: true, tdClass: "col-tight" },
   { key: "MV_CHANGE_3M_MM",    label: "3M MV ($MM)", sortable: true, tdClass: "col-tight col-group-l" },
@@ -716,7 +766,7 @@ function applyLoansFilter() {
   });
 
   if (state.loanScreenMode === "size") {
-    rows = rows.filter((row) => Number(row.YIELD) >= 9 && Number(row.AMT_OUTSTANDING_MM) >= 200);
+    rows = rows.filter((row) => Number(row.YIELD) >= 9 && Number(row.AMT_OUTSTANDING_MM) >= 700);
   } else if (state.loanScreenMode === "yield") {
     rows = rows.filter((row) => Number(row.AMT_OUTSTANDING_MM) >= 700);
   }
@@ -743,7 +793,7 @@ function applyLoansFilter() {
   state.filteredLoanRows = rows;
   clearLoansSearchButton.classList.toggle("hidden", !loansSearchInput.value);
   const screenNote = state.loanScreenMode === "size"
-    ? " — Yield ≥9%, Tranche ≥$200M"
+    ? " — Yield ≥9%, Tranche ≥$700M"
     : state.loanScreenMode === "yield"
     ? " — Face ≥$700M, sorted by Yield"
     : "";
@@ -764,10 +814,10 @@ function renderLoansTable() {
       <th></th>
       <th></th>
       <th></th>
-      <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">(In $ Millions)</em></th>
+      <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">($MM)</em></th>
       <th colspan="3" class="group-header col-group-l">Price &amp; Yield</th>
       <th colspan="2" class="group-header col-group-l">Px Move</th>
-      <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">(In $ Millions)</em></th>
+      <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">($MM)</em></th>
       <th class="col-group-l"></th>
       <th colspan="2" class="group-header col-group-l">Coverage</th>
     </tr>
@@ -805,6 +855,16 @@ function renderLoansTable() {
       if (col.key === "AMT_OUTSTANDING_MM") return `<td${cls}>${fmt(row[col.key], 0)}</td>`;
       if (col.key === "PX_MID") return `<td${cls}>${fmt(row[col.key], 2)}</td>`;
       if (col.key === "YIELD") return `<td${cls}>${fmt(row[col.key], 2)}</td>`;
+      if (col.key === "COUPON_DISPLAY") {
+        const ri = String(row.RESET_INDEX || "").trim().replace(/\s*index\s*/i, "");
+        const margin = row.LN_CURRENT_MARGIN;
+        if (ri) {
+          const marginStr = margin != null && margin !== "" ? ` + ${Math.round(Number(margin))}` : "";
+          return `<td${cls}>${ri}${marginStr}</td>`;
+        }
+        const cpn = row.CPN_VALUE;
+        return `<td${cls}>${cpn != null && cpn !== "" ? fmt(cpn, 2) : "-"}</td>`;
+      }
       if (col.key === "NAME") {
         const text = row[col.key] != null ? row[col.key] : "-";
         return `<td${cls}>${text}</td>`;
@@ -933,14 +993,16 @@ function applyFilters() {
   }
 
   const mvColumns = new Set(["3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)"]);
+  const isMvSort = mvColumns.has(sortBy);
   rows.sort((left, right) => {
     const a = left[sortBy];
     const b = right[sortBy];
     const aNum = typeof a === "number" ? a : Number(a);
     const bNum = typeof b === "number" ? b : Number(b);
     const numeric = !Number.isNaN(aNum) && !Number.isNaN(bNum);
-    const av = numeric && mvColumns.has(sortBy) ? Math.abs(aNum) : aNum;
-    const bv = numeric && mvColumns.has(sortBy) ? Math.abs(bNum) : bNum;
+    const useAbs = isMvSort && state.mvAbsSort;
+    const av = numeric && useAbs ? Math.abs(aNum) : aNum;
+    const bv = numeric && useAbs ? Math.abs(bNum) : bNum;
     const result = numeric ? av - bv : String(a ?? "").localeCompare(String(b ?? ""));
     return ascending ? result : -result;
   });
@@ -964,16 +1026,16 @@ function isQualifyingRow(row, minMaturity) {
   if (row._IS_DEFAULTED) return false;
   const rowYield = Number(row.YIELD);
   const rowPx = Number(row.PX_MID);
-  const isLoan = row.LOAN_TYPE != null && row.LOAN_TYPE !== "";
-  if (isLoan) return rowYield > 9 && rowYield < 50 && rowPx < 95;
   const rowAmount = Number(row.AMT_OUTSTANDING_MM);
-  const rankText = String(row.PAYMENT_RANK || "").toLowerCase();
-  const isPreferred = rankText === "preferred";
+  const isLoan = row.LOAN_TYPE != null && row.LOAN_TYPE !== "";
   const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
   const maturityEligible = !minMaturity || !maturity || (maturity instanceof Date && !Number.isNaN(maturity.getTime()) && maturity > minMaturity);
-  if (!maturityEligible || rowAmount < 200) return false;
-  if (isPreferred) return rowYield > 10 && rowYield < 50 && rowPx < 100;
-  return rowYield > 10 && rowYield < 50 && rowPx < 100 && !rankText.includes("subordinated");
+  if (isLoan) return maturityEligible && rowAmount >= 700 && rowYield >= 9 && rowYield <= 50 && rowPx <= 95;
+  const rankText = String(row.PAYMENT_RANK || "").toLowerCase();
+  const isPreferred = rankText === "preferred";
+  if (!maturityEligible || rowAmount < 400) return false;
+  if (isPreferred) return rowYield >= 10 && rowYield <= 50 && rowPx <= 100;
+  return rowYield >= 10 && rowYield <= 50 && rowPx <= 100 && !rankText.includes("subordinated");
 }
 
 function getExclusionReasons(row, minMaturity) {
@@ -989,29 +1051,32 @@ function getExclusionReasons(row, minMaturity) {
   const rowAmount = Number(row.AMT_OUTSTANDING_MM);
   const isLoan = row.LOAN_TYPE != null && row.LOAN_TYPE !== "";
   if (isLoan) {
-    if (rowAmount < 200) reasons.push("Size < $200M");
+    const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
+    const maturityEligible = !minMaturity || !maturity || (maturity instanceof Date && !Number.isNaN(maturity.getTime()) && maturity > minMaturity);
+    if (!maturityEligible) reasons.push("Maturity ≤2M");
+    if (rowAmount < 700) reasons.push("Size < $700M");
     if (yieldMissing) reasons.push("No yield data");
-    else if (rowYield <= 9) reasons.push("Yield below threshold");
-    else if (rowYield >= 50) reasons.push("Yield out of range");
-    if (!pxMissing && rowPx >= 95) reasons.push("Price ≥95");
+    else if (rowYield < 9) reasons.push("Yield < 9%");
+    else if (rowYield > 50) reasons.push("Yield > 50%");
+    if (!pxMissing && rowPx > 95) reasons.push("Price > 95");
     return reasons.join("; ") || "Other";
   }
   const rankText = String(row.PAYMENT_RANK || "").toLowerCase();
   const maturity = row.MATURITY ? new Date(row.MATURITY) : null;
   const maturityEligible = !minMaturity || !maturity || (maturity instanceof Date && !Number.isNaN(maturity.getTime()) && maturity > minMaturity);
-  if (!maturityEligible) reasons.push("Maturity < 2M");
-  if (rowAmount < 200) reasons.push("Size < $200M");
+  if (!maturityEligible) reasons.push("Maturity ≤2M");
+  if (rowAmount < 400) reasons.push("Size < $400M");
   if (rankText.includes("subordinated")) reasons.push("Subordinated");
   if (yieldMissing) reasons.push("No yield data");
-  else if (rowYield <= 10) reasons.push("Yield below threshold");
-  else if (rowYield >= 50) reasons.push("Yield out of range");
-  if (!pxMissing && rowPx >= 100) reasons.push("Price ≥ Par");
+  else if (rowYield < 10) reasons.push("Yield < 10%");
+  else if (rowYield > 50) reasons.push("Yield > 50%");
+  if (!pxMissing && rowPx > 100) reasons.push("Price > 100");
   return reasons.join("; ") || "Other";
 }
 
 function renderNonQualifyingHead() {
   return `<tr>${detailColumns.map((column) => {
-    const sup = column.key === "LAST_30D_VOLUME_MM" ? "<sup>6</sup>" : "";
+    const sup = column.key === "LQA_EXPECTED_DAILY_VOLUME_MM" ? "<sup>6</sup>" : column.key === "LQA_LIQUIDITY_SCORE" ? "<sup>7</sup>" : "";
     return `<th>${column.label}${sup}</th>`;
   }).join("")}<th>Exclusion Reason</th></tr>`;
 }
@@ -1027,6 +1092,10 @@ function renderNonQualifyingRows(rows, minMaturity) {
       if (column.key === "PRICE_MOVE_3M") return `<td>${renderPriceMove(row)}</td>`;
       if (column.key === "PRICE_MOVE_7D") return `<td>${renderPriceMove7D(row)}</td>`;
       if (column.key === "PRICE_RANGE") return `<td>${renderPriceRange(row)}</td>`;
+      if (column.key === "LQA_EXPECTED_DAILY_VOLUME_MM") {
+        const v = Number(value);
+        return `<td>${value == null || isNaN(v) || v < 0 ? "-" : fmt(v, 1)}</td>`;
+      }
       const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
       return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
     }).join("");
@@ -1054,6 +1123,10 @@ function renderDetailRows(rows) {
       if (column.key === "PRICE_MOVE_3M") return `<td>${renderPriceMove(row)}</td>`;
       if (column.key === "PRICE_MOVE_7D") return `<td>${renderPriceMove7D(row)}</td>`;
       if (column.key === "PRICE_RANGE") return `<td>${renderPriceRange(row)}</td>`;
+      if (column.key === "LQA_EXPECTED_DAILY_VOLUME_MM") {
+        const v = Number(value);
+        return `<td>${value == null || isNaN(v) || v < 0 ? "-" : fmt(v, 1)}</td>`;
+      }
       const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
       return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
     }).join("");
@@ -1063,7 +1136,7 @@ function renderDetailRows(rows) {
 
 function renderDetailHead() {
   return `<tr>${detailColumns.map((column) => {
-    const sup = column.key === "LAST_30D_VOLUME_MM" ? "<sup>6</sup>" : "";
+    const sup = column.key === "LQA_EXPECTED_DAILY_VOLUME_MM" ? "<sup>6</sup>" : column.key === "LQA_LIQUIDITY_SCORE" ? "<sup>7</sup>" : "";
     return `<th>${column.label}${sup}</th>`;
   }).join("")}</tr>`;
 }

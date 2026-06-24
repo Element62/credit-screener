@@ -257,9 +257,6 @@ tbody tr.selected { background: rgba(11, 127, 90, 0.08); }
 .col-group-r { border-right: 2px solid rgba(17, 59, 116, 0.22); }
 #issuerBody td:nth-child(1)  { border-right: 2px solid rgba(17, 59, 116, 0.22); }
 #issuerBody td:nth-child(3)  { border-left:  2px solid rgba(17, 59, 116, 0.22); }
-#issuerBody td:nth-child(6)  { border-left:  2px solid rgba(17, 59, 116, 0.22); }
-/* col 9 (MV Change) borders handled via inline col-group-l col-group-r on td */
-#issuerBody td:nth-child(11) { border-right: 2px solid rgba(17, 59, 116, 0.22); }
 
 .table-button {
   background: transparent;
@@ -303,6 +300,30 @@ tbody tr.selected { background: rgba(11, 127, 90, 0.08); }
   background: transparent;
   color: var(--accent-dark);
 }
+
+.mv-abs-toggle {
+  display: block;
+  margin: 2px auto 0;
+  padding: 0px 5px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+  border: 1px solid rgba(17, 59, 116, 0.25);
+  background: transparent;
+  color: rgba(17, 59, 116, 0.4);
+  cursor: pointer;
+  min-height: unset;
+  line-height: 1.6;
+}
+.mv-abs-toggle.active {
+  background: rgba(17, 59, 116, 0.12);
+  border-color: rgba(17, 59, 116, 0.45);
+  color: var(--navy);
+}
+.mv-abs-toggle:hover { transform: none; }
+
+.face-pct { font-style: normal; font-size: 0.8em; color: var(--muted); font-weight: 400; }
 
 .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 0.8rem; background: rgba(17, 59, 116, 0.08); }
 .pill { padding: 3px 6px; font-size: 0.7rem; }
