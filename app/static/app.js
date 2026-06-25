@@ -1352,10 +1352,9 @@ reloadDataButton.addEventListener("click", async () => {
 });
 
 downloadIssuersButton.addEventListener("click", async () => {
-  await downloadExcel("/api/export/issuers", {
-    rows: state.filteredIssuers.slice(0, 50),
-    upsideMode: state.upsideMode,
-  });
+  const topN = parseInt(document.getElementById("issuerTopNInput")?.value, 10);
+  const rows = (topN > 0) ? state.filteredIssuers.slice(0, topN) : state.filteredIssuers;
+  await downloadExcel("/api/export/issuers", { rows, upsideMode: state.upsideMode });
 });
 
 hideDetailButton.addEventListener("click", () => {

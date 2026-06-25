@@ -471,7 +471,7 @@ def export_issuers(payload: dict = Body(...), _: str = Depends(get_current_user)
     upside_mode = str(payload.get("upsideMode", "52w"))
     if not isinstance(rows, list):
         raise HTTPException(status_code=400, detail="rows must be a list")
-    return build_issuer_excel_response(rows[:50], upside_mode)
+    return build_issuer_excel_response(rows, upside_mode)
 
 
 @app.post("/api/export/detail")
