@@ -444,6 +444,9 @@ tbody tr.selected { background: rgba(11, 127, 90, 0.08); }
 }
 .defaulted-marker { color: var(--bad); font-weight: 700; font-size: 0.7em; vertical-align: super; margin-left: 2px; }
 .defaulted-eyebrow { color: var(--bad); }
+.holding-marker { color: var(--accent); font-weight: 700; font-size: 0.7em; vertical-align: super; margin-left: 2px; }
+.holding-row td { background: rgba(11, 127, 90, 0.07); }
+.holding-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: rgba(11, 127, 90, 0.12); color: var(--accent); border: 1px solid rgba(11, 127, 90, 0.3); vertical-align: middle; margin-left: 6px; }
 .error { color: var(--bad); }
 
 #documentationTabPanel h3 {

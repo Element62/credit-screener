@@ -1086,8 +1086,9 @@ function renderNonQualifyingRows(rows, minMaturity) {
     const cells = detailColumns.map((column) => {
       const value = row[column.key];
       if (column.key === "NAME") {
+        const hMarker = row._IS_HOLDING ? `<sup class="holding-marker" title="Portfolio holding">H</sup>` : "";
         const bbgId = row.ID || "";
-        return `<td title="${bbgId}">${fmt(value, 2)}</td>`;
+        return `<td title="${bbgId}">${fmt(value, 2)}${hMarker}</td>`;
       }
       if (column.key === "PRICE_MOVE_3M") return `<td>${renderPriceMove(row)}</td>`;
       if (column.key === "PRICE_MOVE_7D") return `<td>${renderPriceMove7D(row)}</td>`;
@@ -1100,7 +1101,8 @@ function renderNonQualifyingRows(rows, minMaturity) {
       return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
     }).join("");
     const reason = getExclusionReasons(row, minMaturity);
-    return `<tr>${cells}<td class="exclusion-reason-cell">${reason}</td></tr>`;
+    const rowClass = row._IS_HOLDING ? ` class="holding-row"` : "";
+    return `<tr${rowClass}>${cells}<td class="exclusion-reason-cell">${reason}</td></tr>`;
   }).join("");
 }
 
@@ -1117,8 +1119,9 @@ function renderDetailRows(rows) {
       const value = row[column.key];
       if (column.key === "NAME") {
         const dMarker = row._IS_DEFAULTED ? `<sup class="defaulted-marker" title="Defaulted">D</sup>` : "";
+        const hMarker = row._IS_HOLDING ? `<sup class="holding-marker" title="Portfolio holding">H</sup>` : "";
         const bbgId = row.ID || "";
-        return `<td title="${bbgId}">${fmt(value, 2)}${dMarker}</td>`;
+        return `<td title="${bbgId}">${fmt(value, 2)}${dMarker}${hMarker}</td>`;
       }
       if (column.key === "PRICE_MOVE_3M") return `<td>${renderPriceMove(row)}</td>`;
       if (column.key === "PRICE_MOVE_7D") return `<td>${renderPriceMove7D(row)}</td>`;
@@ -1130,7 +1133,8 @@ function renderDetailRows(rows) {
       const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
       return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
     }).join("");
-    return `<tr>${cells}</tr>`;
+    const rowClass = row._IS_HOLDING ? ` class="holding-row"` : "";
+    return `<tr${rowClass}>${cells}</tr>`;
   }).join("");
 }
 
@@ -1153,12 +1157,15 @@ function renderIssuerDetail(parentTicker) {
 
   state.detailRows = rows;
   const issuer = state.issuers.find((row) => row.PARENT_TICKER === parentTicker);
+  const hasHoldings = !!issuer?._HAS_HOLDING;
   state.selectedIssuer = parentTicker;
   detailCard.classList.remove("hidden");
+  detailCard.classList.toggle("issuer-has-holdings", hasHoldings);
   detailToggleBar.classList.remove("hidden");
   hideDetailButton.innerHTML = "&#x25BC; Hide Detail";
   detailTicker.textContent = parentTicker;
-  detailTitle.textContent = issuer?.Issuer || parentTicker;
+  const holdingBadge = hasHoldings ? ` <span class="holding-badge">Holding</span>` : "";
+  detailTitle.innerHTML = (issuer?.Issuer || parentTicker) + holdingBadge;
   detailHead.innerHTML = renderDetailHead();
   detailBody.innerHTML = renderDetailRows(rows);
 

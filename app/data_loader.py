@@ -134,8 +134,8 @@ def _normalize_52w(df_52w: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _dedupe_144a_regs(df: pd.DataFrame) -> pd.DataFrame:
-    """Drop 144A entries that have a matching REGS security (same issuer, amount, maturity, coupon, rank)."""
+def _dedupe_144a_regs(df: pd.DataFrame, holding_ids: set | None = None) -> pd.DataFrame:
+    """For each 144A/REGS pair: keep 144A if it's a holding, otherwise keep REGS."""
     if "SERIES" not in df.columns:
         return df
     series_norm = df["SERIES"].fillna("").astype(str).str.upper().str.replace(r"\s+", "", regex=True)
@@ -146,9 +146,12 @@ def _dedupe_144a_regs(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["_AMT_ROUND"] = pd.to_numeric(df["AMT_OUTSTANDING"], errors="coerce").round(-3)
     match_cols = [c for c in ["PARENT_TICKER", "_AMT_ROUND", "MATURITY", "CPN_VALUE", "PAYMENT_RANK"] if c in df.columns]
-    regs_keys = df.loc[is_regs, match_cols].drop_duplicates()
-    matched = df.loc[is_144a, match_cols + ["ID"]].merge(regs_keys, on=match_cols, how="inner")
-    ids_to_drop = set(matched["ID"].tolist()) if "ID" in matched.columns else set()
+    regs_df = df.loc[is_regs, match_cols + ["ID"]].rename(columns={"ID": "REGS_ID"})
+    matched = df.loc[is_144a, match_cols + ["ID"]].merge(regs_df, on=match_cols, how="inner")
+    holdings = holding_ids or set()
+    regs_to_drop = set(matched.loc[matched["ID"].isin(holdings), "REGS_ID"])
+    a144_to_drop = set(matched.loc[~matched["ID"].isin(holdings), "ID"])
+    ids_to_drop = regs_to_drop | a144_to_drop
     return df[~df["ID"].isin(ids_to_drop)].drop(columns=["_AMT_ROUND"]).copy()
 
 
@@ -413,7 +416,19 @@ def _load_xlsx_sheet(path: Path, sheet_name: str) -> pd.DataFrame:
 
 
 def load_workbook(path: Path) -> WorkbookData:
-    df_master = _dedupe_144a_regs(_normalize_master(_clean_sheet(_load_xlsx_sheet(path, "master"))))
+    # Load holding IDs first so dedup logic can prefer 144A when it's a holding
+    try:
+        df_holding = _clean_sheet(_load_xlsx_sheet(path, "holding"))
+        loan_col = next((c for c in df_holding.columns if c and "loan" in c.lower()), None)
+        if loan_col and not df_holding.empty:
+            raw_ids = df_holding[loan_col].dropna().astype(str).str.strip()
+            holding_ids: set[str] = {v + " Corp" for v in raw_ids if v and v.upper() != "NULL"}
+        else:
+            holding_ids = set()
+    except (KeyError, Exception):
+        holding_ids = set()
+
+    df_master = _dedupe_144a_regs(_normalize_master(_clean_sheet(_load_xlsx_sheet(path, "master"))), holding_ids)
     df_spread = _normalize_spread(_clean_sheet(_load_xlsx_sheet(path, "spread_px")))
     df_52w = _normalize_52w(_clean_sheet(_load_xlsx_sheet(path, "52w_px")))
 
@@ -476,6 +491,7 @@ def load_workbook(path: Path) -> WorkbookData:
     df["_IS_SECURED"] = df["PAYMENT_RANK"].apply(_is_secured)
     df["_IS_PREFERRED"] = df["PAYMENT_RANK"].fillna("").astype(str).str.lower().eq("preferred")
     df["_IS_DEFAULTED"] = df["DEFAULTED"].fillna("").astype(str).eq("1") if "DEFAULTED" in df.columns else False
+    df["_IS_HOLDING"] = df["ID"].isin(holding_ids) if holding_ids else False
 
     issuer_agg = _issuer_metrics(df, anchor_date) if anchor_date else pd.DataFrame(columns=["PARENT_TICKER"])
     summary_df = df[~(pd.to_numeric(df["PX_MID"], errors="coerce") > 120)].copy()
@@ -555,6 +571,8 @@ def load_workbook(path: Path) -> WorkbookData:
         issuer_display["RETURN TO PAR PREFERRED TARGET ($MM)"].fillna(0)
     )
     issuer_display["Maturity Within 1Y"] = issuer_display.apply(lambda r: _wall_label(r.get("WALL_LT1Y_MM"), r.get("WALL_LT1Y_PCT")), axis=1)
+    holding_tickers = set(df.loc[df["_IS_HOLDING"], "PARENT_TICKER"].dropna()) if holding_ids else set()
+    issuer_display["_HAS_HOLDING"] = issuer_display["PARENT_TICKER"].isin(holding_tickers)
     issuer_display["COVERAGE PRIMARY"] = pd.NA
     issuer_display["COVERAGE SECONDARY"] = pd.NA
     issuer_display["Adj Unsecured Sprd Movement (bps)"] = pd.NA
@@ -588,7 +606,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "Total Secured Face ($MM)", "Total Unsecured Face ($MM)", "Total Preferred Face ($MM)",
         "Face Strike Zone ($MM)", "Face Total All ($MM)",
         "52W PEAK UPSIDE TOTAL TARGET ($MM)", "RETURN TO PAR TOTAL TARGET ($MM)", "Max Yield",
-        "HAS_DEFAULTED",
+        "HAS_DEFAULTED", "_HAS_HOLDING",
     ]
     issuer_display = issuer_display[issuer_display.get("Sector", pd.Series(dtype=str)).fillna("").astype(str).str.lower() != "government"]
     issuer_display = issuer_display[[col for col in issuer_columns if col in issuer_display.columns]].sort_values(
@@ -605,7 +623,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "YIELD", "YIELD_T90", "DIST_TO_PAR", "DISLOCATION_MM", "PX_HIGH_52W", "DATE_OF_HIGH",
         "PX_LOW_52W", "DATE_OF_LOW", "DISLOCATION_52W_MM", "OAS", "OAS_T90", "OAS_DELTA",
         "DISTRESS_TIER", "SECTOR", "COUNTRY", "CPN_TYPE", "CPN_VALUE", "LAST_MONTH_VOLUME",
-        "ISS_CURRENCY", "LQA_LIQUIDITY_SCORE", "EXPECTED_DAILY_VOLUME", "_IS_DEFAULTED",
+        "ISS_CURRENCY", "LQA_LIQUIDITY_SCORE", "EXPECTED_DAILY_VOLUME", "_IS_DEFAULTED", "_IS_HOLDING",
     ]
     instruments = summary_df[[col for col in instrument_columns if col in summary_df.columns]].copy()
     instruments["AMT_OUTSTANDING_MM"] = pd.to_numeric(instruments["AMT_OUTSTANDING"], errors="coerce") / 1e6
