@@ -481,7 +481,8 @@ function renderIssuerTable() {
         const marker = row.REPORT_SENTIMENT_COLOR
           ? `<sup class="sentiment-marker ${row.REPORT_SENTIMENT_COLOR}" title="${row.REPORT_SENTIMENT_LABEL || "Report sentiment"}"></sup>`
           : "";
-        return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${marker}</button></td>`;
+        const hMarker = row._HAS_HOLDING ? `<sup class="holding-marker" title="Portfolio holding">H</sup>` : "";
+        return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${marker}${hMarker}</button></td>`;
       }
       if (["3M MV Change ($MM)", "7D MV Change ($MM)", "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)"].includes(column)) {
         if (value === null || value === undefined || value === 0) return `<td class="col-tight col-group-l">-</td>`;
@@ -516,7 +517,8 @@ function renderIssuerTable() {
       const bc = bodyBorderClass[column];
       return `<td${bc ? ` class="${bc}"` : ""}>${fmtIssuer(column, value)}</td>`;
     }).join("");
-    return `<tr class="${selected}">${cells}</tr>`;
+    const classes = [selected, row._HAS_HOLDING ? "issuer-has-holdings" : ""].filter(Boolean).join(" ");
+    return `<tr class="${classes}">${cells}</tr>`;
   }).join("");
 
   document.querySelectorAll("[data-issuer]").forEach((button) => {
