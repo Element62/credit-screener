@@ -234,7 +234,7 @@ th, td {
 }
 tbody td { border-bottom: 1px solid var(--line); }
 tbody tr:hover { background: rgba(17, 59, 116, 0.05); }
-tbody tr.selected { background: rgba(11, 127, 90, 0.08); }
+tbody tr.selected { background: rgba(20, 35, 59, 0.09); }
 .col-fit { width: 1%; white-space: nowrap; }
 .col-tight { width: 1%; white-space: nowrap; }
 .loans-col-narrow { max-width: 180px; }
@@ -444,11 +444,21 @@ tbody tr.selected { background: rgba(11, 127, 90, 0.08); }
 }
 .defaulted-marker { color: var(--bad); font-weight: 700; font-size: 0.7em; vertical-align: super; margin-left: 2px; }
 .defaulted-eyebrow { color: var(--bad); }
-.holding-marker { color: var(--accent); font-weight: 700; font-size: 0.7em; vertical-align: super; margin-left: 2px; }
-.holding-row td { background: rgba(11, 127, 90, 0.07); }
+.holding-marker { font-weight: 700; font-size: 0.7em; vertical-align: super; margin-left: 2px; }
+.holding-marker.h-direct { color: #0A8F5A; }
+.holding-marker.h-indirect { color: #C07000; }
+.holding-row td { background: rgba(10, 143, 90, 0.09); }
+.holding-row-indirect td { background: rgba(192, 112, 0, 0.07); }
 tr.issuer-has-holdings td { background: rgba(11, 127, 90, 0.05); }
-tr.issuer-has-holdings.selected td { background: rgba(11, 127, 90, 0.1); }
+tr.issuer-has-holdings.selected td { background: rgba(20, 35, 59, 0.11); }
 .holding-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: rgba(11, 127, 90, 0.12); color: var(--accent); border: 1px solid rgba(11, 127, 90, 0.3); vertical-align: middle; margin-left: 6px; }
+.holding-legend { display: flex; align-items: center; gap: 16px; padding: 5px 0 2px; font-size: 0.75rem; color: var(--muted); }
+.holding-legend .legend-item { display: flex; align-items: baseline; gap: 4px; }
+.holding-legend .holding-marker { font-size: 0.75em; vertical-align: super; margin-left: 0; }
+.id-tip { display: none; font-size: 0.68rem; color: var(--muted); background: rgba(0,0,0,0.04); border: 1px solid var(--border); padding: 1px 5px; border-radius: 3px; cursor: pointer; white-space: nowrap; margin-left: 5px; vertical-align: middle; font-weight: 400; user-select: none; }
+td:hover .id-tip { display: inline; }
+.id-tip:hover { color: var(--accent); border-color: var(--accent); background: rgba(11, 127, 90, 0.06); }
+.id-tip.copied { color: var(--accent); border-color: var(--accent); }
 .error { color: var(--bad); }
 
 #documentationTabPanel h3 {

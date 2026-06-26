@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Credit Screener</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260625c" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260626d" />
   </head>
   <body>
     <div class="page-shell">
@@ -35,6 +35,7 @@
           <div class="tab-strip">
             <button id="issuerTabButton" type="button" class="tab-button active">Issuer Screen</button>
             <button id="loansTabButton" type="button" class="tab-button">Loans</button>
+            <button id="bondsTabButton" type="button" class="tab-button">Bonds</button>
             <button id="moversTabButton" type="button" class="tab-button">Price Movers</button>
             <button id="documentationTabButton" type="button" class="tab-button">Documentation</button>
             <button id="exceptionsTabButton" type="button" class="tab-button">Exceptions</button>
@@ -153,12 +154,60 @@
               </div>
             </div>
             <div id="loanFilterChips" class="loan-filter-chips"></div>
+            <div class="holding-legend">
+              <span class="legend-item"><sup class="holding-marker h-direct">H</sup> Direct holding</span>
+              <span class="legend-item"><sup class="holding-marker h-indirect">H</sup> Holds elsewhere in capital structure</span>
+            </div>
           </section>
           <section class="card">
             <div class="table-wrap">
               <table>
                 <thead id="loansHead"></thead>
                 <tbody id="loansBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div id="bondsTabPanel" class="hidden">
+          <section class="card">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">Bond Instruments</p>
+                <p id="bondsStatus" class="status-bar"></p>
+              </div>
+              <div class="toolbar-group">
+                <label>Search
+                  <div class="search-field">
+                    <input id="bondsSearchInput" type="text" placeholder="Issuer or security name" />
+                    <button id="clearBondsSearchButton" type="button" class="clear-search hidden" aria-label="Clear search">X</button>
+                  </div>
+                </label>
+                <label>Top N
+                  <input id="bondTopNInput" type="number" min="1" value="50" class="top-n-input" />
+                </label>
+                <label>&nbsp;
+                  <button id="bondScreenButton" type="button" class="secondary">Screen by Size: Top 50</button>
+                </label>
+                <label>&nbsp;
+                  <button id="bondYieldScreenButton" type="button" class="secondary">Screen by Yield: Top 50</button>
+                </label>
+                <label>&nbsp;
+                  <button id="downloadBondsButton" type="button" class="secondary">Download Bonds View</button>
+                </label>
+              </div>
+            </div>
+            <div id="bondFilterChips" class="loan-filter-chips"></div>
+            <div class="holding-legend">
+              <span class="legend-item"><sup class="holding-marker h-direct">H</sup> Direct holding</span>
+              <span class="legend-item"><sup class="holding-marker h-indirect">H</sup> Holds elsewhere in capital structure</span>
+            </div>
+          </section>
+          <section class="card">
+            <div class="table-wrap">
+              <table>
+                <thead id="bondsHead"></thead>
+                <tbody id="bondsBody"></tbody>
               </table>
             </div>
           </section>
@@ -341,6 +390,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260625c"></script>
+    <script src="/static/app.js?v=20260626d"></script>
   </body>
 </html>

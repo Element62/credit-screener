@@ -18,6 +18,13 @@ const state = {
   loanScreenMode: null,
   loanActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
   loanFilterValues: { yieldMin: 9, yieldMax: 50, priceMax: 95 },
+  bondRows: [],
+  filteredBondRows: [],
+  bondSortField: "AMT_OUTSTANDING_MM",
+  bondSortDirection: "desc",
+  bondScreenMode: null,
+  bondActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
+  bondFilterValues: { yieldMin: 10, yieldMax: 50, priceMax: 100 },
   upsideMode: "52w",
   moveMode: "3m",
   mvAbsSort: true,
@@ -35,10 +42,12 @@ const logoutButton = document.getElementById("logoutButton");
 const loadingBanner = document.getElementById("loadingBanner");
 const issuerTabButton = document.getElementById("issuerTabButton");
 const loansTabButton = document.getElementById("loansTabButton");
+const bondsTabButton = document.getElementById("bondsTabButton");
 const moversTabButton = document.getElementById("moversTabButton");
 const exceptionsTabButton = document.getElementById("exceptionsTabButton");
 const issuerTabPanel = document.getElementById("issuerTabPanel");
 const loansTabPanel = document.getElementById("loansTabPanel");
+const bondsTabPanel = document.getElementById("bondsTabPanel");
 const moversTabPanel = document.getElementById("moversTabPanel");
 const exceptionsTabPanel = document.getElementById("exceptionsTabPanel");
 const documentationTabButton = document.getElementById("documentationTabButton");
@@ -76,6 +85,16 @@ const loanScreenButton = document.getElementById("loanScreenButton");
 const loanYieldScreenButton = document.getElementById("loanYieldScreenButton");
 const downloadLoansButton = document.getElementById("downloadLoansButton");
 const loanFilterChips = document.getElementById("loanFilterChips");
+const bondsHead = document.getElementById("bondsHead");
+const bondsBody = document.getElementById("bondsBody");
+const bondsStatus = document.getElementById("bondsStatus");
+const bondsSearchInput = document.getElementById("bondsSearchInput");
+const clearBondsSearchButton = document.getElementById("clearBondsSearchButton");
+const bondTopNInput = document.getElementById("bondTopNInput");
+const bondScreenButton = document.getElementById("bondScreenButton");
+const bondYieldScreenButton = document.getElementById("bondYieldScreenButton");
+const downloadBondsButton = document.getElementById("downloadBondsButton");
+const bondFilterChips = document.getElementById("bondFilterChips");
 const detailCard = document.getElementById("detailCard");
 const detailTicker = document.getElementById("detailTicker");
 const detailTitle = document.getElementById("detailTitle");
@@ -481,7 +500,7 @@ function renderIssuerTable() {
         const marker = row.REPORT_SENTIMENT_COLOR
           ? `<sup class="sentiment-marker ${row.REPORT_SENTIMENT_COLOR}" title="${row.REPORT_SENTIMENT_LABEL || "Report sentiment"}"></sup>`
           : "";
-        const hMarker = row._HAS_HOLDING ? `<sup class="holding-marker" title="Portfolio holding">H</sup>` : "";
+        const hMarker = row._HAS_HOLDING ? `<sup class="holding-marker h-direct" title="Portfolio holding">H</sup>` : "";
         return `<td><button class="table-button" data-issuer="${row.PARENT_TICKER}">${fmt(value, 2)}${marker}${hMarker}</button></td>`;
       }
       if (["3M MV Change ($MM)", "7D MV Change ($MM)", "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)"].includes(column)) {
@@ -841,9 +860,26 @@ function renderLoansTable() {
     </tr>
   `;
 
+  const loanHoldingTickers = new Set([
+    ...state.loanRows.filter(r => r._IS_HOLDING).map(r => r.PARENT_TICKER),
+    ...state.bondRows.filter(r => r._IS_HOLDING).map(r => r.PARENT_TICKER),
+  ]);
+
   loansBody.innerHTML = state.filteredLoanRows.map((row) => {
+    const isDirect = !!row._IS_HOLDING;
+    const isIndirect = !isDirect && loanHoldingTickers.has(row.PARENT_TICKER);
+    const holdingClass = isDirect ? " holding-row" : (isIndirect ? " holding-row-indirect" : "");
     const cells = loanColumns.map((col) => {
       const cls = col.tdClass ? ` class="${col.tdClass}"` : "";
+      if (col.key === "Issuer") {
+        const hMarker = isDirect
+          ? `<sup class="holding-marker h-direct" title="Direct portfolio holding">H</sup>`
+          : isIndirect
+            ? `<sup class="holding-marker h-indirect" title="Holds in capital structure">H</sup>`
+            : "";
+        const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
+        return `<td>${row.Issuer || row.PARENT_TICKER || "-"}${hMarker}${idChip}</td>`;
+      }
       if (col.key === "PRICE_RANGE") return `<td${cls}>${renderLoanPriceRange(row)}</td>`;
       if (col.key === "PRICE_MOVE_3M") return `<td${cls}>${fmtPriceMove(row.PRICE_MOVE_3M)}</td>`;
       if (col.key === "PRICE_MOVE_7D") return `<td${cls}>${fmtPriceMove(row.PRICE_MOVE_7D)}</td>`;
@@ -868,8 +904,14 @@ function renderLoansTable() {
         return `<td${cls}>${cpn != null && cpn !== "" ? fmt(cpn, 2) : "-"}</td>`;
       }
       if (col.key === "NAME") {
-        const text = row[col.key] != null ? row[col.key] : "-";
-        return `<td${cls}>${text}</td>`;
+        const text = row.NAME != null ? row.NAME : "-";
+        const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
+        return `<td${cls}>${text}${idChip}</td>`;
+      }
+      if (col.key === "SECTOR") {
+        const text = row.SECTOR != null ? row.SECTOR : "-";
+        const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
+        return `<td${cls}>${text}${idChip}</td>`;
       }
       if (col.key === "COVERAGE_PRIMARY" || col.key === "COVERAGE_SECONDARY") {
         const slot = col.key === "COVERAGE_PRIMARY" ? "primary" : "secondary";
@@ -879,7 +921,7 @@ function renderLoansTable() {
       }
       return `<td${cls}>${row[col.key] != null ? row[col.key] : "-"}</td>`;
     }).join("");
-    return `<tr>${cells}</tr>`;
+    return `<tr${holdingClass ? ` class="${holdingClass.trim()}"` : ""}>${cells}</tr>`;
   }).join("");
 
   document.querySelectorAll("[data-loan-sort]").forEach((btn) => {
@@ -892,6 +934,245 @@ function renderLoansTable() {
         state.loanSortDirection = "desc";
       }
       applyLoansFilter();
+    });
+  });
+}
+
+// ── Bonds tab ──────────────────────────────────────────────────────────────
+
+const bondColumns = [
+  { key: "Issuer",             label: "Issuer" },
+  { key: "NAME",               label: "Security" },
+  { key: "SECTOR",             label: "Sector",       tdClass: "col-tight" },
+  { key: "PAYMENT_RANK",       label: "Lien",         tdClass: "col-tight" },
+  { key: "AMT_OUTSTANDING_MM", label: "Amt Out",      sortable: true, tdClass: "col-tight col-group-l" },
+  { key: "PX_MID",             label: "Current Px",   tdClass: "col-tight col-group-l" },
+  { key: "YIELD",              label: "Yield",         tdClass: "col-tight" },
+  { key: "COUPON_RATE",        label: "Coupon",        tdClass: "col-tight" },
+  { key: "PRICE_MOVE_3M",      label: "3M Px Move",   sortable: true, tdClass: "col-tight col-group-l" },
+  { key: "PRICE_MOVE_7D",      label: "7D Px Move",   sortable: true, tdClass: "col-tight" },
+  { key: "MV_CHANGE_3M_MM",    label: "3M MV ($MM)",  sortable: true, tdClass: "col-tight col-group-l" },
+  { key: "MV_CHANGE_7D_MM",    label: "7D MV ($MM)",  sortable: true, tdClass: "col-tight" },
+  { key: "PRICE_RANGE",        label: "52W Range",    tdClass: "col-group-l" },
+];
+
+const BOND_FILTER_DEFS = [
+  { id: "yieldMin", label: "Yield >", unit: "%", test: (row, v) => Number(row.YIELD) > v },
+  { id: "yieldMax", label: "Yield <", unit: "%", test: (row, v) => Number(row.YIELD) < v },
+  { id: "priceMax", label: "Price <", unit: "",  test: (row, v) => Number(row.PX_MID) < v },
+];
+
+const BOND_ABS_SORT_FIELDS = new Set(["PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM"]);
+
+function renderBondFilterChips() {
+  bondFilterChips.innerHTML = BOND_FILTER_DEFS.map((def) => {
+    const active = state.bondActiveFilters[def.id];
+    const val = state.bondFilterValues[def.id];
+    const unit = def.unit ? `<span class="chip-unit">${def.unit}</span>` : "";
+    if (active) {
+      return `<span class="filter-chip active">
+        ${def.label}
+        <input class="chip-val-input" type="number" data-bond-filter-id="${def.id}" value="${val}" step="any" />
+        ${unit}
+        <button class="chip-remove" data-bond-filter-id="${def.id}" type="button" title="Remove">×</button>
+      </span>`;
+    }
+    return `<span class="filter-chip inactive-chip">
+      ${def.label}
+      <input class="chip-val-input chip-val-inactive" type="number" data-bond-filter-id="${def.id}" value="${val}" step="any" />
+      ${unit}
+      <button class="chip-add" data-bond-filter-id="${def.id}" type="button" title="Add filter">+</button>
+    </span>`;
+  }).join("");
+
+  bondFilterChips.querySelectorAll(".chip-val-input:not(.chip-val-inactive)").forEach((input) => {
+    input.addEventListener("change", () => {
+      const v = parseFloat(input.value);
+      if (!Number.isNaN(v)) { state.bondFilterValues[input.dataset.bondFilterId] = v; applyBondsFilter(); }
+    });
+  });
+  bondFilterChips.querySelectorAll(".chip-remove").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.bondActiveFilters[btn.dataset.bondFilterId] = false;
+      applyBondsFilter();
+    });
+  });
+  bondFilterChips.querySelectorAll(".chip-add").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.bondFilterId;
+      const input = bondFilterChips.querySelector(`.chip-val-input[data-bond-filter-id="${id}"]`);
+      const v = parseFloat(input?.value);
+      if (!Number.isNaN(v)) state.bondFilterValues[id] = v;
+      state.bondActiveFilters[id] = true;
+      applyBondsFilter();
+    });
+  });
+}
+
+function updateBondScreenButton() {
+  const topN = parseInt(bondTopNInput.value, 10) || 50;
+  const isSizeOn = state.bondScreenMode === "size";
+  const isYieldOn = state.bondScreenMode === "yield";
+  bondScreenButton.textContent = isSizeOn ? `Screened: Top ${topN} by Size ✓` : `Screen by Size: Top ${topN}`;
+  bondScreenButton.classList.toggle("btn-on", isSizeOn);
+  bondScreenButton.classList.toggle("secondary", !isSizeOn);
+  bondYieldScreenButton.textContent = isYieldOn ? `Screened: Top ${topN} by Yield ✓` : `Screen by Yield: Top ${topN}`;
+  bondYieldScreenButton.classList.toggle("btn-on", isYieldOn);
+  bondYieldScreenButton.classList.toggle("secondary", !isYieldOn);
+}
+
+function applyBondsFilter() {
+  const search = bondsSearchInput.value.trim().toLowerCase();
+  let rows = search
+    ? state.bondRows.filter((row) =>
+        String(row.Issuer || "").toLowerCase().includes(search) ||
+        String(row.PARENT_TICKER || "").toLowerCase().includes(search) ||
+        String(row.NAME || "").toLowerCase().includes(search)
+      )
+    : [...state.bondRows];
+
+  BOND_FILTER_DEFS.forEach((def) => {
+    if (state.bondActiveFilters[def.id]) {
+      const v = state.bondFilterValues[def.id];
+      rows = rows.filter((row) => def.test(row, v));
+    }
+  });
+
+  if (state.bondScreenMode === "size") {
+    rows = rows.filter((row) => Number(row.YIELD) >= 10 && Number(row.AMT_OUTSTANDING_MM) >= 400);
+  } else if (state.bondScreenMode === "yield") {
+    rows = rows.filter((row) => Number(row.AMT_OUTSTANDING_MM) >= 400);
+  }
+
+  const sf = state.bondScreenMode === "yield" ? "YIELD" : state.bondSortField;
+  const asc = state.bondScreenMode === "yield" ? false : state.bondSortDirection === "asc";
+  rows.sort((a, b) => {
+    let av = Number(a[sf]);
+    let bv = Number(b[sf]);
+    if (BOND_ABS_SORT_FIELDS.has(sf)) {
+      av = Number.isNaN(av) ? -Infinity : Math.abs(av);
+      bv = Number.isNaN(bv) ? -Infinity : Math.abs(bv);
+    } else {
+      av = Number.isNaN(av) ? -Infinity : av;
+      bv = Number.isNaN(bv) ? -Infinity : bv;
+    }
+    return asc ? av - bv : bv - av;
+  });
+
+  const topN = parseInt(bondTopNInput.value, 10);
+  if (!Number.isNaN(topN) && topN > 0) rows = rows.slice(0, topN);
+
+  state.filteredBondRows = rows;
+  clearBondsSearchButton.classList.toggle("hidden", !bondsSearchInput.value);
+  const screenNote = state.bondScreenMode === "size"
+    ? " — Yield ≥10%, Face ≥$400M"
+    : state.bondScreenMode === "yield"
+    ? " — Face ≥$400M, sorted by Yield"
+    : "";
+  bondsStatus.textContent = `${rows.length} bond instrument${rows.length !== 1 ? "s" : ""}${screenNote}`;
+  renderBondFilterChips();
+  updateBondScreenButton();
+  renderBondsTable();
+}
+
+function bondSortIndicator(key) {
+  if (state.bondSortField !== key) return "";
+  return state.bondSortDirection === "asc" ? " &uarr;" : " &darr;";
+}
+
+function renderBondsTable() {
+  bondsHead.innerHTML = `
+    <tr class="header-group-row">
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">($MM)</em></th>
+      <th colspan="3" class="group-header col-group-l">Price &amp; Yield</th>
+      <th colspan="2" class="group-header col-group-l">Px Move</th>
+      <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">($MM)</em></th>
+      <th class="col-group-l"></th>
+    </tr>
+    <tr>
+      <th class="col-fit">Issuer</th>
+      <th class="col-fit">Security</th>
+      <th class="col-tight">Sector</th>
+      <th class="col-tight">Lien</th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="AMT_OUTSTANDING_MM">Amt Out${bondSortIndicator("AMT_OUTSTANDING_MM")}</button></th>
+      <th class="col-tight col-group-l">Current Px</th>
+      <th class="col-tight">Yield</th>
+      <th class="col-tight">Coupon</th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="PRICE_MOVE_3M">3M${bondSortIndicator("PRICE_MOVE_3M")}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header bond-sort-header" data-bond-sort="PRICE_MOVE_7D">7D${bondSortIndicator("PRICE_MOVE_7D")}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="MV_CHANGE_3M_MM">3M${bondSortIndicator("MV_CHANGE_3M_MM")}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header bond-sort-header" data-bond-sort="MV_CHANGE_7D_MM">7D${bondSortIndicator("MV_CHANGE_7D_MM")}</button></th>
+      <th class="col-group-l">52W Range</th>
+    </tr>
+  `;
+
+  const bondHoldingTickers = new Set([
+    ...state.loanRows.filter(r => r._IS_HOLDING).map(r => r.PARENT_TICKER),
+    ...state.bondRows.filter(r => r._IS_HOLDING).map(r => r.PARENT_TICKER),
+  ]);
+
+  bondsBody.innerHTML = state.filteredBondRows.map((row) => {
+    const isDirect = !!row._IS_HOLDING;
+    const isIndirect = !isDirect && bondHoldingTickers.has(row.PARENT_TICKER);
+    const holdingClass = isDirect ? " holding-row" : (isIndirect ? " holding-row-indirect" : "");
+    const cells = bondColumns.map((col) => {
+      const cls = col.tdClass ? ` class="${col.tdClass}"` : "";
+      if (col.key === "Issuer") {
+        const hMarker = isDirect
+          ? `<sup class="holding-marker h-direct" title="Direct portfolio holding">H</sup>`
+          : isIndirect
+            ? `<sup class="holding-marker h-indirect" title="Holds in capital structure">H</sup>`
+            : "";
+        const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
+        return `<td>${row.Issuer || row.PARENT_TICKER || "-"}${hMarker}${idChip}</td>`;
+      }
+      if (col.key === "PRICE_RANGE") return `<td${cls}>${renderLoanPriceRange(row)}</td>`;
+      if (col.key === "PRICE_MOVE_3M") return `<td${cls}>${fmtPriceMove(row.PRICE_MOVE_3M)}</td>`;
+      if (col.key === "PRICE_MOVE_7D") return `<td${cls}>${fmtPriceMove(row.PRICE_MOVE_7D)}</td>`;
+      if (col.key === "MV_CHANGE_3M_MM" || col.key === "MV_CHANGE_7D_MM") {
+        const v = Number(row[col.key]);
+        if (!row[col.key] || Number.isNaN(v) || v === 0) return `<td${cls}>-</td>`;
+        const mvCls = v > 0 ? "positive" : "negative";
+        const arrow = v > 0 ? "▲" : "▼";
+        return `<td class="${(col.tdClass || "")} price-move ${mvCls}">${arrow} ${fmt(Math.abs(v), 0)}</td>`;
+      }
+      if (col.key === "AMT_OUTSTANDING_MM") return `<td${cls}>${fmt(row[col.key], 0)}</td>`;
+      if (col.key === "PX_MID") return `<td${cls}>${fmt(row[col.key], 2)}</td>`;
+      if (col.key === "YIELD") return `<td${cls}>${fmt(row[col.key], 2)}</td>`;
+      if (col.key === "COUPON_RATE") {
+        const v = Number(row.COUPON_RATE);
+        return `<td${cls}>${row.COUPON_RATE == null || Number.isNaN(v) ? "-" : fmt(v, 2)}</td>`;
+      }
+      if (col.key === "NAME") {
+        const text = row.NAME != null ? row.NAME : "-";
+        const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
+        return `<td${cls}>${text}${idChip}</td>`;
+      }
+      if (col.key === "SECTOR") {
+        const text = row.SECTOR != null ? row.SECTOR : "-";
+        const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
+        return `<td${cls}>${text}${idChip}</td>`;
+      }
+      return `<td${cls}>${row[col.key] != null ? row[col.key] : "-"}</td>`;
+    }).join("");
+    return `<tr${holdingClass ? ` class="${holdingClass.trim()}"` : ""}>${cells}</tr>`;
+  }).join("");
+
+  document.querySelectorAll("[data-bond-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const col = btn.dataset.bondSort;
+      if (state.bondSortField === col) {
+        state.bondSortDirection = state.bondSortDirection === "asc" ? "desc" : "asc";
+      } else {
+        state.bondSortField = col;
+        state.bondSortDirection = "desc";
+      }
+      applyBondsFilter();
     });
   });
 }
@@ -964,16 +1245,19 @@ function applyMoversFilters() {
 function setActiveTab(tabName) {
   const issuerActive = tabName === "issuer";
   const loansActive = tabName === "loans";
+  const bondsActive = tabName === "bonds";
   const moversActive = tabName === "movers";
   const exceptionsActive = tabName === "exceptions";
   const documentationActive = tabName === "documentation";
   issuerTabButton.classList.toggle("active", issuerActive);
   loansTabButton.classList.toggle("active", loansActive);
+  bondsTabButton.classList.toggle("active", bondsActive);
   moversTabButton.classList.toggle("active", moversActive);
   exceptionsTabButton.classList.toggle("active", exceptionsActive);
   documentationTabButton.classList.toggle("active", documentationActive);
   issuerTabPanel.classList.toggle("hidden", !issuerActive);
   loansTabPanel.classList.toggle("hidden", !loansActive);
+  bondsTabPanel.classList.toggle("hidden", !bondsActive);
   moversTabPanel.classList.toggle("hidden", !moversActive);
   exceptionsTabPanel.classList.toggle("hidden", !exceptionsActive);
   documentationTabPanel.classList.toggle("hidden", !documentationActive);
@@ -1088,7 +1372,7 @@ function renderNonQualifyingRows(rows, minMaturity) {
     const cells = detailColumns.map((column) => {
       const value = row[column.key];
       if (column.key === "NAME") {
-        const hMarker = row._IS_HOLDING ? `<sup class="holding-marker" title="Portfolio holding">H</sup>` : "";
+        const hMarker = row._IS_HOLDING ? `<sup class="holding-marker h-direct" title="Portfolio holding">H</sup>` : "";
         const bbgId = row.ID || "";
         return `<td title="${bbgId}">${fmt(value, 2)}${hMarker}</td>`;
       }
@@ -1121,7 +1405,7 @@ function renderDetailRows(rows) {
       const value = row[column.key];
       if (column.key === "NAME") {
         const dMarker = row._IS_DEFAULTED ? `<sup class="defaulted-marker" title="Defaulted">D</sup>` : "";
-        const hMarker = row._IS_HOLDING ? `<sup class="holding-marker" title="Portfolio holding">H</sup>` : "";
+        const hMarker = row._IS_HOLDING ? `<sup class="holding-marker h-direct" title="Portfolio holding">H</sup>` : "";
         const bbgId = row.ID || "";
         return `<td title="${bbgId}">${fmt(value, 2)}${dMarker}${hMarker}</td>`;
       }
@@ -1203,12 +1487,13 @@ async function openIssuerDetail(parentTicker) {
 
 async function loadDashboard() {
   setLoading(true, "Loading...");
-  const [dashboardPayload, moversPayload, abnormalPricesPayload, excludedPayload, loansPayload, coveragePayload] = await Promise.all([
+  const [dashboardPayload, moversPayload, abnormalPricesPayload, excludedPayload, loansPayload, bondsPayload, coveragePayload] = await Promise.all([
     fetchJson("/api/dashboard"),
     fetchJson("/api/price-movers"),
     fetchJson("/api/abnormal-prices"),
     fetchJson("/api/excluded"),
     fetchJson("/api/loans"),
+    fetchJson("/api/bonds"),
     fetchJson("/api/coverage"),
   ]);
   state.issuers = dashboardPayload.issuers;
@@ -1236,10 +1521,12 @@ async function loadDashboard() {
   }));
   state.excludedRows = excludedPayload.rows;
   state.loanRows = loansPayload.rows;
+  state.bondRows = bondsPayload.rows;
   state.coverageMap = coveragePayload.coverages || {};
   applyFilters();
   applyMoversFilters();
   applyLoansFilter();
+  applyBondsFilter();
   renderAbnormalPriceTable();
   setLoading(false);
 }
@@ -1285,7 +1572,24 @@ logoutButton.addEventListener("click", async () => {
 });
 
 issuerTabButton.addEventListener("click", () => setActiveTab("issuer"));
+function setupIdChipCopy(tbody) {
+  tbody.addEventListener("click", (e) => {
+    const chip = e.target.closest(".id-tip");
+    if (!chip) return;
+    const text = chip.dataset.clip;
+    navigator.clipboard.writeText(text).then(() => {
+      const prev = chip.textContent;
+      chip.textContent = "✓ Copied";
+      chip.classList.add("copied");
+      setTimeout(() => { chip.textContent = prev; chip.classList.remove("copied"); }, 1500);
+    });
+  });
+}
+setupIdChipCopy(loansBody);
+setupIdChipCopy(bondsBody);
+
 loansTabButton.addEventListener("click", () => setActiveTab("loans"));
+bondsTabButton.addEventListener("click", () => setActiveTab("bonds"));
 moversTabButton.addEventListener("click", () => setActiveTab("movers"));
 exceptionsTabButton.addEventListener("click", () => setActiveTab("exceptions"));
 documentationTabButton.addEventListener("click", () => setActiveTab("documentation"));
@@ -1335,6 +1639,32 @@ loanScreenButton.addEventListener("click", () => {
 loanYieldScreenButton.addEventListener("click", () => {
   state.loanScreenMode = state.loanScreenMode === "yield" ? null : "yield";
   applyLoansFilter();
+});
+
+bondsSearchInput.addEventListener("input", applyBondsFilter);
+clearBondsSearchButton.addEventListener("click", () => {
+  bondsSearchInput.value = "";
+  applyBondsFilter();
+  bondsSearchInput.focus();
+});
+
+bondTopNInput.addEventListener("input", () => {
+  updateBondScreenButton();
+  applyBondsFilter();
+});
+
+bondScreenButton.addEventListener("click", () => {
+  state.bondScreenMode = state.bondScreenMode === "size" ? null : "size";
+  applyBondsFilter();
+});
+
+bondYieldScreenButton.addEventListener("click", () => {
+  state.bondScreenMode = state.bondScreenMode === "yield" ? null : "yield";
+  applyBondsFilter();
+});
+
+downloadBondsButton.addEventListener("click", async () => {
+  await downloadExcel("/api/export/bonds", { rows: state.filteredBondRows });
 });
 
 reloadDataButton.addEventListener("click", async () => {

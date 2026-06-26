@@ -28,6 +28,7 @@ class WorkbookData:
     abnormal_price_rows: list[dict]
     excluded_rows: list[dict]
     loan_rows: list[dict]
+    bond_rows: list[dict]
     filters: dict
     metadata: dict
 
@@ -774,6 +775,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "RESET_INDEX", "LN_CURRENT_MARGIN", "CPN_VALUE",
         "PX_HIGH_52W", "DATE_OF_HIGH", "PX_LOW_52W", "DATE_OF_LOW",
         "PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM",
+        "_IS_HOLDING", "_IS_DEFAULTED",
     ]
     if "LOAN_TYPE" in df.columns:
         loans_df = df[df["LOAN_TYPE"].notna()].copy()
@@ -796,6 +798,33 @@ def load_workbook(path: Path) -> WorkbookData:
     else:
         loan_rows_list = []
 
+    bond_col_list = [
+        "ID", "PARENT_TICKER", "NAME", "PAYMENT_RANK", "SECTOR",
+        "AMT_OUTSTANDING", "PX_MID", "YIELD", "MATURITY", "COUPON_RATE", "COUPON_TYPE",
+        "PX_HIGH_52W", "DATE_OF_HIGH", "PX_LOW_52W", "DATE_OF_LOW",
+        "PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM",
+        "_IS_HOLDING", "_IS_DEFAULTED",
+    ]
+    if "LOAN_TYPE" in df.columns:
+        bonds_df = df[df["LOAN_TYPE"].isna()].copy()
+        if "ISS_CURRENCY" in bonds_df.columns:
+            bonds_df = bonds_df[bonds_df["ISS_CURRENCY"].fillna("USD").astype(str).str.upper().eq("USD")].copy()
+    else:
+        bonds_df = df.copy()
+    if not bonds_df.empty:
+        if "ISSUER_NAME" in bonds_df.columns:
+            bonds_df["Issuer"] = bonds_df["ISSUER_NAME"].fillna(bonds_df["PARENT_TICKER"])
+        else:
+            bonds_df["Issuer"] = bonds_df["PARENT_TICKER"]
+        bonds_df["AMT_OUTSTANDING_MM"] = pd.to_numeric(bonds_df["AMT_OUTSTANDING"], errors="coerce") / 1e6
+        bond_select = ["Issuer"] + [c for c in bond_col_list if c in bonds_df.columns] + ["AMT_OUTSTANDING_MM"]
+        bonds_df = bonds_df[bond_select].sort_values(
+            by=["PARENT_TICKER", "AMT_OUTSTANDING_MM"], ascending=[True, False], na_position="last"
+        )
+        bond_rows_list = _records_from_df(bonds_df)
+    else:
+        bond_rows_list = []
+
     filters = {
         "sectors": sorted([s for s in issuer_display["Sector"].dropna().astype(str).unique().tolist() if s and s != "Unknown"]),
         "distress_tiers": ["Deep Distressed", "Distressed", "Stressed", "Par-Adjacent", "Premium"],
@@ -814,6 +843,7 @@ def load_workbook(path: Path) -> WorkbookData:
         abnormal_price_rows=_records_from_df(abnormal_prices),
         excluded_rows=_records_from_df(excluded_df),
         loan_rows=loan_rows_list,
+        bond_rows=bond_rows_list,
         filters=filters,
         metadata=metadata,
     )
