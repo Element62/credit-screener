@@ -7,6 +7,8 @@ from pathlib import Path
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
 from openpyxl.utils import get_column_letter
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -126,6 +128,8 @@ _NO = Side(style=None)
 
 _HEADER_FILL = PatternFill("solid", fgColor=_NAVY)
 _ALT_FILL = PatternFill("solid", fgColor="EFF2F8")
+_HOLDING_FILL = PatternFill("solid", fgColor="DFF2E9")
+_HOLDING_ALT_FILL = PatternFill("solid", fgColor="C8E8D5")
 
 _ISSUER_COLS = [
     "Issuer", "Sector",
@@ -239,7 +243,11 @@ def build_issuer_excel_response(rows: list[dict], upside_mode: str) -> Streaming
     data_font_bold = Font(name="Calibri", size=9, bold=True)
 
     for r_idx, row in enumerate(rows, start=3):
-        fill = _ALT_FILL if r_idx % 2 == 0 else PatternFill("solid", fgColor=_WHITE)
+        is_holding = bool(row.get("_HAS_HOLDING"))
+        if is_holding:
+            fill = _HOLDING_ALT_FILL if r_idx % 2 == 0 else _HOLDING_FILL
+        else:
+            fill = _ALT_FILL if r_idx % 2 == 0 else PatternFill("solid", fgColor=_WHITE)
         for c_idx, key in enumerate(col_keys, start=1):
             value = row.get(key)
             cell = ws.cell(row=r_idx, column=c_idx)
@@ -300,6 +308,14 @@ def build_issuer_excel_response(rows: list[dict], upside_mode: str) -> Streaming
                 except (TypeError, ValueError):
                     pass
 
+            if key == "Issuer" and is_holding:
+                name = str(value) if value is not None else ""
+                cell.value = CellRichText(
+                    TextBlock(InlineFont(b=True, sz=18, color="14233B"), name),
+                    TextBlock(InlineFont(b=True, sz=13, vertAlign="superscript", color=_GREEN), "H"),
+                )
+                cell.alignment = left_align
+                continue
             cell.value = value if value is not None else ""
             cell.font = data_font_bold if key == "Issuer" else data_font
             cell.alignment = left_align if key in ("Issuer", "Sector") else right_align
