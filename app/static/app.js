@@ -124,7 +124,7 @@ function setLoading(isLoading, message = "Loading...") {
 
 const issuerColumns = [
   "Issuer",
-  "Sector",
+  "Industry",
   "Secured Face ($BN)",
   "Unsecured Face ($BN)",
   "Preferred Face ($BN)",
@@ -150,6 +150,7 @@ const detailColumns = [
   { key: "PRICE_MOVE_7D", label: "7D Price Move" },
   { key: "PRICE_MOVE_3M", label: "3M Price Move" },
   { key: "YIELD", label: "Yield" },
+  { key: "VOLUME_5D", label: "5D Vol ($MM)" },
   { key: "LQA_LIQUIDITY_SCORE", label: "Liquidity Score" },
   { key: "LQA_EXPECTED_DAILY_VOLUME_MM", label: "Exp. Daily Volume ($MM)" },
   { key: "PRICE_RANGE", label: "Price Range" },
@@ -189,12 +190,7 @@ function fmt(value, digits = 2) {
   return value;
 }
 
-const COVERAGE_ANALYSTS = [
-  "David", "Bill", "Bronte", "Jake", "Basso", "Evan", "Brie", "Manish",
-  "Allen", "Sherman", "Nicoll", "Zhe", "Dante", "Olivia", "Bergstein",
-  "Casey", "Bobby", "Patrick", "Brooks", "Nick", "Sam", "Reed",
-  "Nick M", "Kendrick", "Ryan", "Mark", "Samson", "Jared",
-];
+let COVERAGE_ANALYSTS = [];
 
 const zeroAsDashColumns = new Set([
   "Secured Face ($MM)", "Unsecured Face ($MM)", "Preferred Face ($MM)", "Face Strike Zone ($MM)",
@@ -230,10 +226,12 @@ function renderCoverageCell(ticker, slot, names) {
 function updateCoverageCells(ticker) {
   const btn = issuerBody.querySelector(`[data-issuer="${CSS.escape(ticker)}"]`);
   if (!btn) return;
-  const tds = btn.closest("tr").querySelectorAll("td");
+  const tr = btn.closest("tr");
   const entry = state.coverageMap[ticker] || { primary: [], secondary: [] };
-  if (tds[11]) tds[11].innerHTML = renderCoverageCell(ticker, "primary", entry.primary || []);
-  if (tds[12]) tds[12].innerHTML = renderCoverageCell(ticker, "secondary", entry.secondary || []);
+  const primTd = tr.querySelector("td[data-col='COVERAGE PRIMARY']");
+  const secTd  = tr.querySelector("td[data-col='COVERAGE SECONDARY']");
+  if (primTd) primTd.innerHTML = renderCoverageCell(ticker, "primary",   entry.primary   || []);
+  if (secTd)  secTd.innerHTML  = renderCoverageCell(ticker, "secondary", entry.secondary || []);
 }
 
 function detailDigits(column) {
@@ -372,9 +370,10 @@ const glossaryEntries = [
   { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside for Strike Zone securities, assuming prices revert to 52-week highs (52W) or par (Return to Par)." },
   { sup: "3", label: "3M / 7D MV Change", def: "Aggregate market value change ($MM) for Strike Zone securities over the selected time period." },
   { sup: "4", label: "Price", def: "Face-weighted average mid price across Strike Zone securities." },
-  { sup: "5", label: "Yield", def: "Face-weighted average yield to maturity across Strike Zone securities." },
-  { sup: "6", label: "Exp. Daily Volume ($MM)", def: "Bloomberg LQA Expected Daily Volume: estimated notional a single firm could sell in one day within the current bid-ask spread. Modeled using reference data (amount outstanding, maturity, coupon), market data (trade count, dealer quotes), and pricing data (spread, volatility)." },
+  { sup: "5", label: "Yield", def: "Market value-weighted average yield to maturity across Strike Zone securities." },
+  { sup: "6", label: "5D Vol ($MM)", def: "5-day notional trading volume sourced from FINRA TRACE, representing actual dollar amounts traded." },
   { sup: "7", label: "Liquidity Score", def: "Bloomberg LQA score: a 1–100 percentile ranking of estimated liquidation cost within an asset class. 100 = most liquid (lowest cost); 1 = least liquid. Scores are relative to peers — there is no absolute meaning to any specific value." },
+  { sup: "8", label: "Exp. Daily Volume ($MM)", def: "Bloomberg LQA Expected Daily Volume: estimated notional a single firm could sell in one day within the current bid-ask spread. Modeled using reference data (amount outstanding, maturity, coupon), market data (trade count, dealer quotes), and pricing data (spread, volatility)." },
 ];
 
 function renderIssuerTable() {
@@ -409,7 +408,7 @@ function renderIssuerTable() {
   const yieldKey = "Yield";
 
   const tableColumnOrder = [
-    "Issuer", "Sector",
+    "Issuer", "Industry",
     faceStrikeSecKey, faceStrikeUnsecKey, faceStrikePrefKey, faceStrikeTotalKey,
     faceTotalSecKey,  faceTotalUnsecKey,  faceTotalPrefKey,  faceTotalTotalKey,
     upsideSecKey, upsideUnsecKey, upsidePrefKey, upsideTotalKey,
@@ -431,7 +430,7 @@ function renderIssuerTable() {
     </tr>
     <tr>
       <th class="col-fit col-group-r">Issuer</th>
-      <th class="col-fit">Sector</th>
+      <th class="col-fit">Industry</th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${faceStrikeSecKey}">Secured${sortIndicator(faceStrikeSecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceStrikeUnsecKey}">Unsecured${sortIndicator(faceStrikeUnsecKey)}</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${faceStrikePrefKey}">Preferred${sortIndicator(faceStrikePrefKey)}</button></th>
@@ -522,7 +521,7 @@ function renderIssuerTable() {
         const ticker = row.PARENT_TICKER;
         const names = (state.coverageMap[ticker] || {})[slot] || [];
         const covClass = column === "COVERAGE PRIMARY" ? "cov-cell col-group-l" : "cov-cell";
-        return `<td class="${covClass}">${renderCoverageCell(ticker, slot, names)}</td>`;
+        return `<td class="${covClass}" data-col="${column}">${renderCoverageCell(ticker, slot, names)}</td>`;
       }
       if (state.faceStrikeZonePct && column in faceStrikePctMap) {
         const bc = bodyBorderClass[column];
@@ -650,7 +649,7 @@ function renderAbnormalPriceTable() {
 const exclusionColumns = [
   { key: "Issuer", label: "Issuer" },
   { key: "NAME", label: "Security" },
-  { key: "SECTOR", label: "Sector" },
+  { key: "INDUSTRY", label: "Industry" },
   { key: "PAYMENT_RANK", label: "Lien" },
   { key: "MATURITY", label: "Mat" },
   { key: "AMT_OUTSTANDING_MM", label: "Amt Out ($MM)" },
@@ -671,7 +670,7 @@ function renderExclusionsTable() {
 const loanColumns = [
   { key: "Issuer",             label: "Issuer" },
   { key: "NAME",               label: "Security" },
-  { key: "SECTOR",             label: "Sector",       tdClass: "col-tight" },
+  { key: "INDUSTRY",           label: "Industry",     tdClass: "col-tight" },
   { key: "AMT_OUTSTANDING_MM", label: "Amt Out",     sortable: true, tdClass: "col-tight col-group-l" },
   { key: "PX_MID",             label: "Current Px",  tdClass: "col-tight col-group-l" },
   { key: "YIELD",              label: "Yield",        tdClass: "col-tight" },
@@ -845,7 +844,7 @@ function renderLoansTable() {
     <tr>
       <th class="col-fit">Issuer</th>
       <th class="col-fit">Security</th>
-      <th class="col-tight">Sector</th>
+      <th class="col-tight">Industry</th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header loan-sort-header" data-loan-sort="AMT_OUTSTANDING_MM">Amt Out${loanSortIndicator("AMT_OUTSTANDING_MM")}</button></th>
       <th class="col-tight col-group-l">Current Px</th>
       <th class="col-tight">Yield</th>
@@ -908,8 +907,8 @@ function renderLoansTable() {
         const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
         return `<td${cls}>${text}${idChip}</td>`;
       }
-      if (col.key === "SECTOR") {
-        const text = row.SECTOR != null ? row.SECTOR : "-";
+      if (col.key === "INDUSTRY") {
+        const text = row.INDUSTRY != null ? row.INDUSTRY : "-";
         const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
         return `<td${cls}>${text}${idChip}</td>`;
       }
@@ -943,7 +942,7 @@ function renderLoansTable() {
 const bondColumns = [
   { key: "Issuer",             label: "Issuer" },
   { key: "NAME",               label: "Security" },
-  { key: "SECTOR",             label: "Sector",       tdClass: "col-tight" },
+  { key: "INDUSTRY",           label: "Industry",     tdClass: "col-tight" },
   { key: "PAYMENT_RANK",       label: "Lien",         tdClass: "col-tight" },
   { key: "AMT_OUTSTANDING_MM", label: "Amt Out",      sortable: true, tdClass: "col-tight col-group-l" },
   { key: "PX_MID",             label: "Current Px",   tdClass: "col-tight col-group-l" },
@@ -953,6 +952,7 @@ const bondColumns = [
   { key: "PRICE_MOVE_7D",      label: "7D Px Move",   sortable: true, tdClass: "col-tight" },
   { key: "MV_CHANGE_3M_MM",    label: "3M MV ($MM)",  sortable: true, tdClass: "col-tight col-group-l" },
   { key: "MV_CHANGE_7D_MM",    label: "7D MV ($MM)",  sortable: true, tdClass: "col-tight" },
+  { key: "VOLUME_5D",          label: "5D Vol ($MM)", sortable: true, tdClass: "col-tight col-group-l" },
   { key: "PRICE_RANGE",        label: "52W Range",    tdClass: "col-group-l" },
 ];
 
@@ -1093,11 +1093,12 @@ function renderBondsTable() {
       <th colspan="2" class="group-header col-group-l">Px Move</th>
       <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">($MM)</em></th>
       <th class="col-group-l"></th>
+      <th class="col-group-l"></th>
     </tr>
     <tr>
       <th class="col-fit">Issuer</th>
       <th class="col-fit">Security</th>
-      <th class="col-tight">Sector</th>
+      <th class="col-tight">Industry</th>
       <th class="col-tight">Lien</th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="AMT_OUTSTANDING_MM">Amt Out${bondSortIndicator("AMT_OUTSTANDING_MM")}</button></th>
       <th class="col-tight col-group-l">Current Px</th>
@@ -1107,6 +1108,7 @@ function renderBondsTable() {
       <th class="col-tight"><button type="button" class="sort-header bond-sort-header" data-bond-sort="PRICE_MOVE_7D">7D${bondSortIndicator("PRICE_MOVE_7D")}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="MV_CHANGE_3M_MM">3M${bondSortIndicator("MV_CHANGE_3M_MM")}</button></th>
       <th class="col-tight"><button type="button" class="sort-header bond-sort-header" data-bond-sort="MV_CHANGE_7D_MM">7D${bondSortIndicator("MV_CHANGE_7D_MM")}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="VOLUME_5D">5D Vol ($MM)${bondSortIndicator("VOLUME_5D")}</button></th>
       <th class="col-group-l">52W Range</th>
     </tr>
   `;
@@ -1148,13 +1150,18 @@ function renderBondsTable() {
         const v = Number(row.COUPON_RATE);
         return `<td${cls}>${row.COUPON_RATE == null || Number.isNaN(v) ? "-" : fmt(v, 2)}</td>`;
       }
+      if (col.key === "VOLUME_5D") {
+        const raw = row.VOLUME_5D;
+        const v = Number(raw) / 1000;
+        return `<td${cls}>${raw == null || Number.isNaN(Number(raw)) ? "-" : fmt(v, 1)}</td>`;
+      }
       if (col.key === "NAME") {
         const text = row.NAME != null ? row.NAME : "-";
         const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
         return `<td${cls}>${text}${idChip}</td>`;
       }
-      if (col.key === "SECTOR") {
-        const text = row.SECTOR != null ? row.SECTOR : "-";
+      if (col.key === "INDUSTRY") {
+        const text = row.INDUSTRY != null ? row.INDUSTRY : "-";
         const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
         return `<td${cls}>${text}${idChip}</td>`;
       }
@@ -1270,7 +1277,7 @@ function applyFilters() {
   const ascending = state.sortDirection === "asc";
 
   let rows = [...state.issuers];
-  if (sector !== "All") rows = rows.filter((row) => row.Sector === sector);
+  if (sector !== "All") rows = rows.filter((row) => row.Industry === sector);
   if (search) {
     rows = rows.filter((row) =>
       String(row.Issuer || "").toLowerCase().includes(search) ||
@@ -1362,7 +1369,7 @@ function getExclusionReasons(row, minMaturity) {
 
 function renderNonQualifyingHead() {
   return `<tr>${detailColumns.map((column) => {
-    const sup = column.key === "LQA_EXPECTED_DAILY_VOLUME_MM" ? "<sup>6</sup>" : column.key === "LQA_LIQUIDITY_SCORE" ? "<sup>7</sup>" : "";
+    const sup = column.key === "VOLUME_5D" ? "<sup>6</sup>" : column.key === "LQA_LIQUIDITY_SCORE" ? "<sup>7</sup>" : column.key === "LQA_EXPECTED_DAILY_VOLUME_MM" ? "<sup>8</sup>" : "";
     return `<th>${column.label}${sup}</th>`;
   }).join("")}<th>Exclusion Reason</th></tr>`;
 }
@@ -1382,6 +1389,10 @@ function renderNonQualifyingRows(rows, minMaturity) {
       if (column.key === "LQA_EXPECTED_DAILY_VOLUME_MM") {
         const v = Number(value);
         return `<td>${value == null || isNaN(v) || v < 0 ? "-" : fmt(v, 1)}</td>`;
+      }
+      if (column.key === "VOLUME_5D") {
+        const v = Number(value) / 1000;
+        return `<td>${value == null || isNaN(Number(value)) ? "-" : fmt(v, 1)}</td>`;
       }
       const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
       return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
@@ -1416,6 +1427,10 @@ function renderDetailRows(rows) {
         const v = Number(value);
         return `<td>${value == null || isNaN(v) || v < 0 ? "-" : fmt(v, 1)}</td>`;
       }
+      if (column.key === "VOLUME_5D") {
+        const v = Number(value) / 1000;
+        return `<td>${value == null || isNaN(Number(value)) ? "-" : fmt(v, 1)}</td>`;
+      }
       const className = column.key === "AMT_OUTSTANDING_MM" ? "detail-narrow" : "";
       return `<td class="${className}">${fmt(value, detailDigits(column.key))}</td>`;
     }).join("");
@@ -1426,7 +1441,7 @@ function renderDetailRows(rows) {
 
 function renderDetailHead() {
   return `<tr>${detailColumns.map((column) => {
-    const sup = column.key === "LQA_EXPECTED_DAILY_VOLUME_MM" ? "<sup>6</sup>" : column.key === "LQA_LIQUIDITY_SCORE" ? "<sup>7</sup>" : "";
+    const sup = column.key === "VOLUME_5D" ? "<sup>6</sup>" : column.key === "LQA_LIQUIDITY_SCORE" ? "<sup>7</sup>" : column.key === "LQA_EXPECTED_DAILY_VOLUME_MM" ? "<sup>8</sup>" : "";
     return `<th>${column.label}${sup}</th>`;
   }).join("")}</tr>`;
 }
@@ -1503,12 +1518,16 @@ async function loadDashboard() {
   state.instrumentMap = new Map();
   state.detailRows = [];
   detailCard.classList.add("hidden");
-  sectorFilter.innerHTML = `<option value="All">All</option>${dashboardPayload.filters.sectors.map((sector) => `<option value="${sector}">${sector}</option>`).join("")}`;
+  const industryList = dashboardPayload.filters.industries && dashboardPayload.filters.industries.length ? dashboardPayload.filters.industries : dashboardPayload.filters.sectors;
+  sectorFilter.innerHTML = `<option value="All">All</option>${industryList.map((v) => `<option value="${v}">${v}</option>`).join("")}`;
+  if (dashboardPayload.filters.analyst_names && dashboardPayload.filters.analyst_names.length) {
+    COVERAGE_ANALYSTS = dashboardPayload.filters.analyst_names;
+  }
   state.rawMoversRows = moversPayload.rows.map((row) => ({ ...row, "Price Range": "" }));
   state.abnormalPriceRows = abnormalPricesPayload.rows.map((row) => ({
     Issuer: row.Issuer,
     Security: row.NAME,
-    Sector: row.SECTOR,
+    Sector: row.INDUSTRY || row.SECTOR,
     Rank: row.PAYMENT_RANK,
     Mat: row.MATURITY,
     "Amount Out ($MM)": row.AMT_OUTSTANDING_MM,

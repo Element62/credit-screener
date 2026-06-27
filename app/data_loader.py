@@ -21,6 +21,16 @@ SENIORITY_ORDER = {
 }
 
 
+def _abbreviate_analyst(full_name: str) -> str:
+    """'Nick Basso (MD)' -> 'Nick B'"""
+    import re
+    name = re.sub(r"\s*\(.*?\)", "", str(full_name)).strip()
+    parts = name.split()
+    if len(parts) >= 2:
+        return f"{parts[0]} {parts[1][0]}"
+    return parts[0] if parts else ""
+
+
 @dataclass
 class WorkbookData:
     issuer_table: list[dict]
@@ -31,6 +41,8 @@ class WorkbookData:
     bond_rows: list[dict]
     filters: dict
     metadata: dict
+    analyst_map: dict  # {bloomberg_industry: {"primary": [...], "secondary": [...]}}
+    analyst_names: list  # all unique abbreviated names, sorted
 
 
 def _make_unique_columns(columns: list[str]) -> list[str]:
@@ -412,7 +424,8 @@ def _load_xlsx_sheet(path: Path, sheet_name: str) -> pd.DataFrame:
     if not rows_data:
         return pd.DataFrame()
     header = rows_data[0]
-    data = rows_data[1:]
+    n_cols = len(header)
+    data = [row + [None] * (n_cols - len(row)) if len(row) < n_cols else row[:n_cols] for row in rows_data[1:]]
     return pd.DataFrame(data, columns=header)
 
 
@@ -493,15 +506,18 @@ def load_workbook(path: Path) -> WorkbookData:
     df["_IS_PREFERRED"] = df["PAYMENT_RANK"].fillna("").astype(str).str.lower().eq("preferred")
     df["_IS_DEFAULTED"] = df["DEFAULTED"].fillna("").astype(str).eq("1") if "DEFAULTED" in df.columns else False
     df["_IS_HOLDING"] = df["ID"].isin(holding_ids) if holding_ids else False
+    if "VOLUME_5D" in df.columns:
+        df["VOLUME_5D"] = pd.to_numeric(df["VOLUME_5D"], errors="coerce")
 
     issuer_agg = _issuer_metrics(df, anchor_date) if anchor_date else pd.DataFrame(columns=["PARENT_TICKER"])
     summary_df = df[~(pd.to_numeric(df["PX_MID"], errors="coerce") > 120)].copy()
     issuer_display = (
         issuer_agg
-        .merge(df[["PARENT_TICKER", "SECTOR"]].drop_duplicates("PARENT_TICKER"), on="PARENT_TICKER", how="left")
+        .merge(df[["PARENT_TICKER", "SECTOR", "INDUSTRY"] if "INDUSTRY" in df.columns else ["PARENT_TICKER", "SECTOR"]].drop_duplicates("PARENT_TICKER"), on="PARENT_TICKER", how="left")
         .rename(
             columns={
                 "SECTOR": "Sector",
+                "INDUSTRY": "Industry",
                 "ISSUER_FACE_MM": "Total Face ($MM)",
                 "ISSUER_SCREEN_FACE_MM": "Face Meets Criteria ($MM)",
                 "ISSUER_SCREEN_FACE_PCT": "% Face Meets Criteria",
@@ -581,7 +597,7 @@ def load_workbook(path: Path) -> WorkbookData:
 
     issuer_columns = [
         "PARENT_TICKER",
-        "Issuer", "Sector", "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
+        "Issuer", "Sector", "Industry", "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
         "Price", "Yield", "Price All", "Yield All",
         "3M Price Move", "7D Price Move",
         "3M MV Change ($MM)", "7D MV Change ($MM)",
@@ -623,8 +639,8 @@ def load_workbook(path: Path) -> WorkbookData:
         "PX_MID", "PX_MID_T7", "PX_MID_T90", "PRICE_MOVE_7D", "PRICE_MOVE_3M",
         "YIELD", "YIELD_T90", "DIST_TO_PAR", "DISLOCATION_MM", "PX_HIGH_52W", "DATE_OF_HIGH",
         "PX_LOW_52W", "DATE_OF_LOW", "DISLOCATION_52W_MM", "OAS", "OAS_T90", "OAS_DELTA",
-        "DISTRESS_TIER", "SECTOR", "COUNTRY", "CPN_TYPE", "CPN_VALUE", "LAST_MONTH_VOLUME",
-        "ISS_CURRENCY", "LQA_LIQUIDITY_SCORE", "EXPECTED_DAILY_VOLUME", "_IS_DEFAULTED", "_IS_HOLDING",
+        "DISTRESS_TIER", "SECTOR", "INDUSTRY", "COUNTRY", "CPN_TYPE", "CPN_VALUE", "LAST_MONTH_VOLUME",
+        "ISS_CURRENCY", "LQA_LIQUIDITY_SCORE", "EXPECTED_DAILY_VOLUME", "VOLUME_5D", "_IS_DEFAULTED", "_IS_HOLDING",
     ]
     instruments = summary_df[[col for col in instrument_columns if col in summary_df.columns]].copy()
     instruments["AMT_OUTSTANDING_MM"] = pd.to_numeric(instruments["AMT_OUTSTANDING"], errors="coerce") / 1e6
@@ -770,7 +786,7 @@ def load_workbook(path: Path) -> WorkbookData:
     )
 
     loan_columns = [
-        "ID", "PARENT_TICKER", "NAME", "LOAN_TYPE", "PAYMENT_RANK", "SECTOR",
+        "ID", "PARENT_TICKER", "NAME", "LOAN_TYPE", "PAYMENT_RANK", "SECTOR", "INDUSTRY",
         "AMT_OUTSTANDING", "PX_MID", "YIELD", "MATURITY",
         "RESET_INDEX", "LN_CURRENT_MARGIN", "CPN_VALUE",
         "PX_HIGH_52W", "DATE_OF_HIGH", "PX_LOW_52W", "DATE_OF_LOW",
@@ -799,11 +815,11 @@ def load_workbook(path: Path) -> WorkbookData:
         loan_rows_list = []
 
     bond_col_list = [
-        "ID", "PARENT_TICKER", "NAME", "PAYMENT_RANK", "SECTOR",
+        "ID", "PARENT_TICKER", "NAME", "PAYMENT_RANK", "SECTOR", "INDUSTRY",
         "AMT_OUTSTANDING", "PX_MID", "YIELD", "MATURITY", "COUPON_RATE", "COUPON_TYPE",
         "PX_HIGH_52W", "DATE_OF_HIGH", "PX_LOW_52W", "DATE_OF_LOW",
         "PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM",
-        "_IS_HOLDING", "_IS_DEFAULTED",
+        "VOLUME_5D", "_IS_HOLDING", "_IS_DEFAULTED",
     ]
     if "LOAN_TYPE" in df.columns:
         bonds_df = df[df["LOAN_TYPE"].isna()].copy()
@@ -827,6 +843,7 @@ def load_workbook(path: Path) -> WorkbookData:
 
     filters = {
         "sectors": sorted([s for s in issuer_display["Sector"].dropna().astype(str).unique().tolist() if s and s != "Unknown"]),
+        "industries": sorted([s for s in issuer_display["Industry"].dropna().astype(str).unique().tolist() if s and s != "Unknown"]) if "Industry" in issuer_display.columns else [],
         "distress_tiers": ["Deep Distressed", "Distressed", "Stressed", "Par-Adjacent", "Premium"],
     }
     metadata = {
@@ -837,6 +854,30 @@ def load_workbook(path: Path) -> WorkbookData:
         "workbook_path": str(path),
     }
 
+    # ── Industry analyst map ──────────────────────────────────────────────────
+    analyst_map: dict = {}
+    analyst_names_set: set = set()
+    try:
+        import re as _re
+        df_ia = _clean_sheet(_load_xlsx_sheet(path, "industry_analyst"))
+        ind_col = next((c for c in df_ia.columns if "bloomberg" in c.lower() and "industry" in c.lower()), None)
+        a_cols = sorted([c for c in df_ia.columns if _re.match(r"analyst\s*\d", c, _re.I)])
+        if ind_col and a_cols:
+            for _, ia_row in df_ia.iterrows():
+                ind = str(ia_row[ind_col]).strip() if pd.notna(ia_row[ind_col]) else ""
+                if not ind or ind.lower() in ("nan", "none", ""):
+                    continue
+                abbrevs = []
+                for c in a_cols:
+                    val = ia_row.get(c)
+                    if pd.notna(val) and str(val).strip():
+                        abbrevs.append(_abbreviate_analyst(str(val)))
+                abbrevs = [a for a in abbrevs if a]
+                analyst_names_set.update(abbrevs)
+                analyst_map[ind] = {"primary": abbrevs[:2], "secondary": abbrevs[2:4]}
+    except Exception:
+        pass
+
     return WorkbookData(
         issuer_table=_records_from_df(issuer_display),
         instrument_rows=_records_from_df(instruments),
@@ -846,4 +887,6 @@ def load_workbook(path: Path) -> WorkbookData:
         bond_rows=bond_rows_list,
         filters=filters,
         metadata=metadata,
+        analyst_map=analyst_map,
+        analyst_names=sorted(analyst_names_set),
     )

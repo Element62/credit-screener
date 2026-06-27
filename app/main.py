@@ -68,6 +68,21 @@ def ensure_data_loaded() -> WorkbookData:
     return store.dataset
 
 
+def _build_coverage_map(dataset: WorkbookData) -> dict:
+    """Industry defaults from workbook, overridden by any DB-saved entries."""
+    coverage: dict = {}
+    for row in dataset.issuer_table:
+        ticker = row.get("PARENT_TICKER")
+        industry = row.get("Industry")
+        if ticker and industry and industry in dataset.analyst_map:
+            coverage[ticker] = {
+                "primary": list(dataset.analyst_map[industry]["primary"]),
+                "secondary": list(dataset.analyst_map[industry]["secondary"]),
+            }
+    coverage.update(get_all_coverage())  # DB entries override industry defaults
+    return coverage
+
+
 def enrich_issuers_with_reports(dataset: WorkbookData) -> dict:
     report_records = report_service.snapshot()
     issuers = []
@@ -91,7 +106,7 @@ def enrich_issuers_with_reports(dataset: WorkbookData) -> dict:
         issuers.append(enriched)
     return {
         "issuers": issuers,
-        "filters": dataset.filters,
+        "filters": {**dataset.filters, "analyst_names": dataset.analyst_names},
         "metadata": {**dataset.metadata, "processed_report_count": len(report_records)},
     }
 
@@ -473,7 +488,8 @@ def bonds(_: str = Depends(get_current_user)) -> JSONResponse:
 
 @app.get("/api/coverage")
 def get_coverage(_: str = Depends(get_current_user)) -> JSONResponse:
-    return JSONResponse({"coverages": get_all_coverage()})
+    dataset = ensure_data_loaded()
+    return JSONResponse({"coverages": _build_coverage_map(dataset)})
 
 
 @app.post("/api/coverage")
