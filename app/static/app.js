@@ -146,14 +146,14 @@ const detailColumns = [
   { key: "NAME", label: "Name" },
   { key: "PAYMENT_RANK", label: "Lien" },
   { key: "AMT_OUTSTANDING_MM", label: "Amt Out ($MM)" },
-  { key: "PX_MID", label: "Current PX" },
-  { key: "PRICE_MOVE_7D", label: "7D Price Move" },
-  { key: "PRICE_MOVE_3M", label: "3M Price Move" },
+  { key: "PX_MID", label: "Current Px (pts)" },
+  { key: "PRICE_MOVE_7D", label: "7D Price Move (pts)" },
+  { key: "PRICE_MOVE_3M", label: "3M Price Move (pts)" },
   { key: "YIELD", label: "Yield" },
   { key: "VOLUME_5D", label: "5D Vol ($MM)" },
   { key: "LQA_LIQUIDITY_SCORE", label: "Liquidity Score" },
   { key: "LQA_EXPECTED_DAILY_VOLUME_MM", label: "Exp. Daily Volume ($MM)" },
-  { key: "PRICE_RANGE", label: "Price Range" },
+  { key: "PRICE_RANGE", label: "Price Range (pts)" },
 ];
 
 const moversColumns = [
@@ -445,7 +445,7 @@ function renderIssuerTable() {
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsideTotalKey}">Total${sortIndicator(upsideTotalKey)}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${mvChangeKey}">$MM${sortIndicator(mvChangeKey) || "&#x21c5;"}</button><button type="button" id="mvAbsToggle" class="mv-abs-toggle${state.mvAbsSort ? " active" : ""}">ABS</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${mvPctKey}">%${sortIndicator(mvPctKey)}</button></th>
-      <th class="col-group-l"><button type="button" class="sort-header" data-sort="${priceKey}">Price<sup>4</sup>${sortIndicator(priceKey)}</button></th>
+      <th class="col-group-l"><button type="button" class="sort-header" data-sort="${priceKey}">Price (pts)<sup>4</sup>${sortIndicator(priceKey)}</button></th>
       <th><button type="button" class="sort-header" data-sort="${yieldKey}">Yield<sup>5</sup>${sortIndicator(yieldKey)}</button></th>
       <th class="col-group-l">Primary</th>
       <th>Secondary</th>
