@@ -836,7 +836,7 @@ function renderLoansTable() {
       <th></th>
       <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">($MM)</em></th>
       <th colspan="3" class="group-header col-group-l">Price &amp; Yield</th>
-      <th colspan="2" class="group-header col-group-l">Px Move</th>
+      <th colspan="2" class="group-header col-group-l">Px Move <em>(pts)</em></th>
       <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">($MM)</em></th>
       <th class="col-group-l"></th>
       <th colspan="2" class="group-header col-group-l">Coverage</th>
@@ -954,6 +954,8 @@ const bondColumns = [
   { key: "MV_CHANGE_7D_MM",    label: "7D MV ($MM)",  sortable: true, tdClass: "col-tight" },
   { key: "VOLUME_5D",          label: "5D Vol ($MM)", sortable: true, tdClass: "col-tight col-group-l" },
   { key: "PRICE_RANGE",        label: "52W Range",    tdClass: "col-group-l" },
+  { key: "COVERAGE_PRIMARY",   label: "Primary",      tdClass: "col-tight col-group-l" },
+  { key: "COVERAGE_SECONDARY", label: "Secondary",    tdClass: "col-tight" },
 ];
 
 const BOND_FILTER_DEFS = [
@@ -1090,10 +1092,11 @@ function renderBondsTable() {
       <th></th>
       <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">($MM)</em></th>
       <th colspan="3" class="group-header col-group-l">Price &amp; Yield</th>
-      <th colspan="2" class="group-header col-group-l">Px Move</th>
+      <th colspan="2" class="group-header col-group-l">Px Move <em>(pts)</em></th>
       <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">($MM)</em></th>
       <th class="col-group-l"></th>
       <th class="col-group-l"></th>
+      <th colspan="2" class="group-header col-group-l">Coverage</th>
     </tr>
     <tr>
       <th class="col-fit">Issuer</th>
@@ -1110,6 +1113,8 @@ function renderBondsTable() {
       <th class="col-tight"><button type="button" class="sort-header bond-sort-header" data-bond-sort="MV_CHANGE_7D_MM">7D${bondSortIndicator("MV_CHANGE_7D_MM")}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="VOLUME_5D">5D Vol ($MM)${bondSortIndicator("VOLUME_5D")}</button></th>
       <th class="col-group-l">52W Range</th>
+      <th class="col-tight col-group-l">Primary</th>
+      <th class="col-tight">Secondary</th>
     </tr>
   `;
 
@@ -1164,6 +1169,12 @@ function renderBondsTable() {
         const text = row.INDUSTRY != null ? row.INDUSTRY : "-";
         const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
         return `<td${cls}>${text}${idChip}</td>`;
+      }
+      if (col.key === "COVERAGE_PRIMARY" || col.key === "COVERAGE_SECONDARY") {
+        const slot = col.key === "COVERAGE_PRIMARY" ? "primary" : "secondary";
+        const ticker = row.PARENT_TICKER;
+        const names = (state.coverageMap[ticker] || {})[slot] || [];
+        return `<td${cls}>${renderCoverageCell(ticker, slot, names)}</td>`;
       }
       return `<td${cls}>${row[col.key] != null ? row[col.key] : "-"}</td>`;
     }).join("");
@@ -1801,6 +1812,7 @@ coverageDropdown.addEventListener("click", (e) => {
     arr.push(name);
     updateCoverageCells(_covTicker);
     renderLoansTable();
+    renderBondsTable();
     saveCoverage(_covTicker);
   }
   hideCoverageDropdown();
@@ -1852,6 +1864,33 @@ loansBody.addEventListener("click", (e) => {
       state.coverageMap[ticker][slot].splice(Number(idx), 1);
       updateCoverageCells(ticker);
       renderLoansTable();
+      saveCoverage(ticker);
+    }
+    hideCoverageDropdown();
+  }
+});
+
+bondsBody.addEventListener("click", (e) => {
+  const addBtn = e.target.closest(".cov-add");
+  if (addBtn) {
+    e.stopPropagation();
+    const { ticker, slot } = addBtn.dataset;
+    if (!coverageDropdown.classList.contains("hidden") && _covTicker === ticker && _covSlot === slot) {
+      hideCoverageDropdown();
+    } else {
+      showCoverageDropdown(ticker, slot, addBtn);
+    }
+    return;
+  }
+  const nameSpan = e.target.closest(".cov-name");
+  if (nameSpan) {
+    e.stopPropagation();
+    const { ticker, slot, idx } = nameSpan.dataset;
+    if (state.coverageMap[ticker]) {
+      state.coverageMap[ticker][slot].splice(Number(idx), 1);
+      updateCoverageCells(ticker);
+      renderLoansTable();
+      renderBondsTable();
       saveCoverage(ticker);
     }
     hideCoverageDropdown();
