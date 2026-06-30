@@ -30,8 +30,8 @@ const state = {
   convertibleSortField: "AMT_OUTSTANDING_MM",
   convertibleSortDirection: "desc",
   convertibleScreenMode: "size",
-  convertibleActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
-  convertibleFilterValues: { yieldMin: 10, yieldMax: 50, priceMax: 100 },
+  convertibleActiveFilters: { volMin: true },
+  convertibleFilterValues: { volMin: 10 },
   upsideMode: "52w",
   moveMode: "3m",
   mvAbsSort: true,
@@ -1223,9 +1223,7 @@ function renderBondsTable() {
 // ── Convertibles tab ───────────────────────────────────────────────────────
 
 const CONVERTIBLE_FILTER_DEFS = [
-  { id: "yieldMin", label: "Yield >", unit: "%", test: (row, v) => Number(row.YIELD) > v },
-  { id: "yieldMax", label: "Yield <", unit: "%", test: (row, v) => Number(row.YIELD) < v },
-  { id: "priceMax", label: "Price <", unit: "",  test: (row, v) => Number(row.PX_MID) < v },
+  { id: "volMin", label: "5D Vol >", unit: "$MM", test: (row, v) => (Number(row.VOLUME_5D) / 1000) > v },
 ];
 
 const CONVERTIBLE_ABS_SORT_FIELDS = new Set(["PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM"]);
