@@ -508,6 +508,12 @@ def load_workbook(path: Path) -> WorkbookData:
     df["_IS_HOLDING"] = df["ID"].isin(holding_ids) if holding_ids else False
     if "VOLUME_5D" in df.columns:
         df["VOLUME_5D"] = pd.to_numeric(df["VOLUME_5D"], errors="coerce")
+    if "LTM_ACCRUAL" in df.columns:
+        df["LTM_ACCRUAL"] = pd.to_numeric(df["LTM_ACCRUAL"], errors="coerce")
+    if "CALC_TYPE" in df.columns:
+        df["CALC_TYPE"] = df["CALC_TYPE"].apply(
+            lambda x: None if (pd.isna(x) or str(x).startswith("#")) else x
+        )
 
     issuer_agg = _issuer_metrics(df, anchor_date) if anchor_date else pd.DataFrame(columns=["PARENT_TICKER"])
     summary_df = df[~(pd.to_numeric(df["PX_MID"], errors="coerce") > 120)].copy()
@@ -594,11 +600,19 @@ def load_workbook(path: Path) -> WorkbookData:
     issuer_display["COVERAGE SECONDARY"] = pd.NA
     issuer_display["Adj Unsecured Sprd Movement (bps)"] = pd.NA
     issuer_display["Sprd Movement Label"] = ""
+    if "LTM_ACCRUAL" in df.columns:
+        ltm_map = (
+            df.groupby("PARENT_TICKER")["LTM_ACCRUAL"]
+            .first()
+            .reset_index()
+            .rename(columns={"LTM_ACCRUAL": "LTM Accrual ($MM)"})
+        )
+        issuer_display = issuer_display.merge(ltm_map, on="PARENT_TICKER", how="left")
 
     issuer_columns = [
         "PARENT_TICKER",
         "Issuer", "Sector", "Industry", "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
-        "Price", "Yield", "Price All", "Yield All",
+        "LTM Accrual ($MM)", "Price", "Yield", "Price All", "Yield All",
         "3M Price Move", "7D Price Move",
         "3M MV Change ($MM)", "7D MV Change ($MM)",
         "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)",
@@ -819,7 +833,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "AMT_OUTSTANDING", "PX_MID", "YIELD", "MATURITY", "COUPON_RATE", "COUPON_TYPE",
         "PX_HIGH_52W", "DATE_OF_HIGH", "PX_LOW_52W", "DATE_OF_LOW",
         "PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM",
-        "VOLUME_5D", "_IS_HOLDING", "_IS_DEFAULTED",
+        "VOLUME_5D", "CALC_TYPE", "_IS_HOLDING", "_IS_DEFAULTED",
     ]
     if "LOAN_TYPE" in df.columns:
         bonds_df = df[df["LOAN_TYPE"].isna()].copy()

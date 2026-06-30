@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Credit Screener</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260626n" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260630a" />
   </head>
   <body>
     <div class="page-shell">
@@ -36,6 +36,7 @@
             <button id="issuerTabButton" type="button" class="tab-button active">Issuer Screen</button>
             <button id="loansTabButton" type="button" class="tab-button">Loans</button>
             <button id="bondsTabButton" type="button" class="tab-button">Bonds</button>
+            <button id="convertiblesTabButton" type="button" class="tab-button">Convertibles</button>
             <button id="moversTabButton" type="button" class="tab-button">Price Movers</button>
             <button id="documentationTabButton" type="button" class="tab-button">Documentation</button>
             <button id="exceptionsTabButton" type="button" class="tab-button">Exceptions</button>
@@ -208,6 +209,50 @@
               <table>
                 <thead id="bondsHead"></thead>
                 <tbody id="bondsBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div id="convertiblesTabPanel" class="hidden">
+          <section class="card">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">Convertible Instruments</p>
+                <p id="convertiblesStatus" class="status-bar"></p>
+              </div>
+              <div class="toolbar-group">
+                <label>Search
+                  <div class="search-field">
+                    <input id="convertiblesSearchInput" type="text" placeholder="Issuer or security name" />
+                    <button id="clearConvertiblesSearchButton" type="button" class="clear-search hidden" aria-label="Clear search">X</button>
+                  </div>
+                </label>
+                <label>Top N
+                  <input id="convertibleTopNInput" type="number" min="1" value="50" class="top-n-input" />
+                </label>
+                <label>&nbsp;
+                  <button id="convertibleScreenButton" type="button" class="secondary">Screen by Size: Top 50</button>
+                </label>
+                <label>&nbsp;
+                  <button id="convertibleYieldScreenButton" type="button" class="secondary">Screen by Yield: Top 50</button>
+                </label>
+                <label>&nbsp;
+                  <button id="downloadConvertiblesButton" type="button" class="secondary">Download Convertibles View</button>
+                </label>
+              </div>
+            </div>
+            <div id="convertibleFilterChips" class="loan-filter-chips"></div>
+            <div class="holding-legend">
+              <span class="legend-item"><sup class="holding-marker h-direct">H</sup> Direct holding</span>
+              <span class="legend-item"><sup class="holding-marker h-indirect">H</sup> Holds elsewhere in capital structure</span>
+            </div>
+          </section>
+          <section class="card">
+            <div class="table-wrap">
+              <table>
+                <thead id="convertiblesHead"></thead>
+                <tbody id="convertiblesBody"></tbody>
               </table>
             </div>
           </section>
@@ -390,6 +435,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260626n"></script>
+    <script src="/static/app.js?v=20260630a"></script>
   </body>
 </html>

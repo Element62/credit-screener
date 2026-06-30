@@ -25,6 +25,13 @@ const state = {
   bondScreenMode: "size",
   bondActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
   bondFilterValues: { yieldMin: 10, yieldMax: 50, priceMax: 100 },
+  convertibleRows: [],
+  filteredConvertibleRows: [],
+  convertibleSortField: "AMT_OUTSTANDING_MM",
+  convertibleSortDirection: "desc",
+  convertibleScreenMode: "size",
+  convertibleActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
+  convertibleFilterValues: { yieldMin: 10, yieldMax: 50, priceMax: 100 },
   upsideMode: "52w",
   moveMode: "3m",
   mvAbsSort: true,
@@ -48,6 +55,8 @@ const exceptionsTabButton = document.getElementById("exceptionsTabButton");
 const issuerTabPanel = document.getElementById("issuerTabPanel");
 const loansTabPanel = document.getElementById("loansTabPanel");
 const bondsTabPanel = document.getElementById("bondsTabPanel");
+const convertiblesTabButton = document.getElementById("convertiblesTabButton");
+const convertiblesTabPanel = document.getElementById("convertiblesTabPanel");
 const moversTabPanel = document.getElementById("moversTabPanel");
 const exceptionsTabPanel = document.getElementById("exceptionsTabPanel");
 const documentationTabButton = document.getElementById("documentationTabButton");
@@ -95,6 +104,16 @@ const bondScreenButton = document.getElementById("bondScreenButton");
 const bondYieldScreenButton = document.getElementById("bondYieldScreenButton");
 const downloadBondsButton = document.getElementById("downloadBondsButton");
 const bondFilterChips = document.getElementById("bondFilterChips");
+const convertiblesHead = document.getElementById("convertiblesHead");
+const convertiblesBody = document.getElementById("convertiblesBody");
+const convertiblesStatus = document.getElementById("convertiblesStatus");
+const convertiblesSearchInput = document.getElementById("convertiblesSearchInput");
+const clearConvertiblesSearchButton = document.getElementById("clearConvertiblesSearchButton");
+const convertibleTopNInput = document.getElementById("convertibleTopNInput");
+const convertibleScreenButton = document.getElementById("convertibleScreenButton");
+const convertibleYieldScreenButton = document.getElementById("convertibleYieldScreenButton");
+const downloadConvertiblesButton = document.getElementById("downloadConvertiblesButton");
+const convertibleFilterChips = document.getElementById("convertibleFilterChips");
 const detailCard = document.getElementById("detailCard");
 const detailTicker = document.getElementById("detailTicker");
 const detailTitle = document.getElementById("detailTitle");
@@ -206,6 +225,7 @@ function fmtIssuer(column, value) {
 
 function issuerDigits(column) {
   if (["Price", "Yield", "Price All", "Yield All"].includes(column)) return 2;
+  if (column === "LTM Accrual ($MM)") return 1;
   if (column.endsWith("($BN)")) return 2;
   if (column.endsWith("($MM)")) return 0;
   return 2;
@@ -413,7 +433,7 @@ function renderIssuerTable() {
     faceTotalSecKey,  faceTotalUnsecKey,  faceTotalPrefKey,  faceTotalTotalKey,
     upsideSecKey, upsideUnsecKey, upsidePrefKey, upsideTotalKey,
     mvChangeKey, mvPctKey,
-    priceKey, yieldKey,
+    "LTM Accrual ($MM)", priceKey, yieldKey,
     "COVERAGE PRIMARY", "COVERAGE SECONDARY",
   ];
 
@@ -425,6 +445,7 @@ function renderIssuerTable() {
       <th colspan="4" class="group-header col-group-l">FACE TOTAL <em>($MM)</em></th>
       <th colspan="4" class="group-header upside-toggle col-group-l" id="upsideToggle" title="Click to toggle">${upsideLabel} <em>(Strike Zone, $MM)</em>${upsideSup} &#x21c4;</th>
       <th colspan="2" class="group-header upside-toggle col-group-l" id="moveToggle" title="Click to toggle" style="min-width:155px">${mvChangeLabel}<br><em>(Strike Zone)</em><sup>3</sup> &#x21c4;</th>
+      <th class="col-group-l"></th>
       <th colspan="2" class="group-header col-group-l">Price &amp; Yield <em>(Strike Zone)</em></th>
       <th colspan="2" class="group-header col-group-l">Coverage (WIP)</th>
     </tr>
@@ -445,6 +466,7 @@ function renderIssuerTable() {
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsideTotalKey}">Total${sortIndicator(upsideTotalKey)}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${mvChangeKey}">$MM${sortIndicator(mvChangeKey) || "&#x21c5;"}</button><button type="button" id="mvAbsToggle" class="mv-abs-toggle${state.mvAbsSort ? " active" : ""}">ABS</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${mvPctKey}">%${sortIndicator(mvPctKey)}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="LTM Accrual ($MM)">LTM Accrual<br><em>($MM)</em>${sortIndicator("LTM Accrual ($MM)")}</button></th>
       <th class="col-group-l"><button type="button" class="sort-header" data-sort="${priceKey}">Price (pts)<sup>4</sup>${sortIndicator(priceKey)}</button></th>
       <th><button type="button" class="sort-header" data-sort="${yieldKey}">Yield<sup>5</sup>${sortIndicator(yieldKey)}</button></th>
       <th class="col-group-l">Primary</th>
@@ -477,11 +499,12 @@ function renderIssuerTable() {
   });
 
   const bodyBorderClass = {
-    [faceStrikeSecKey]: "col-group-l",
-    [faceTotalSecKey]:  "col-group-l",
-    [upsideSecKey]:     "col-group-l",
-    [priceKey]:         "col-group-l",
-    "COVERAGE PRIMARY": "col-group-l",
+    [faceStrikeSecKey]:     "col-group-l",
+    [faceTotalSecKey]:      "col-group-l",
+    [upsideSecKey]:         "col-group-l",
+    "LTM Accrual ($MM)":   "col-tight col-group-l",
+    [priceKey]:             "col-group-l",
+    "COVERAGE PRIMARY":     "col-group-l",
   };
 
   const faceStrikePctMap = {
@@ -958,6 +981,8 @@ const bondColumns = [
   { key: "COVERAGE_SECONDARY", label: "Secondary",    tdClass: "col-tight" },
 ];
 
+const convertibleColumns = bondColumns;
+
 const BOND_FILTER_DEFS = [
   { id: "yieldMin", label: "Yield >", unit: "%", test: (row, v) => Number(row.YIELD) > v },
   { id: "yieldMax", label: "Yield <", unit: "%", test: (row, v) => Number(row.YIELD) < v },
@@ -1195,6 +1220,230 @@ function renderBondsTable() {
   });
 }
 
+// ── Convertibles tab ───────────────────────────────────────────────────────
+
+const CONVERTIBLE_FILTER_DEFS = [
+  { id: "yieldMin", label: "Yield >", unit: "%", test: (row, v) => Number(row.YIELD) > v },
+  { id: "yieldMax", label: "Yield <", unit: "%", test: (row, v) => Number(row.YIELD) < v },
+  { id: "priceMax", label: "Price <", unit: "",  test: (row, v) => Number(row.PX_MID) < v },
+];
+
+const CONVERTIBLE_ABS_SORT_FIELDS = new Set(["PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM"]);
+
+function renderConvertibleFilterChips() {
+  convertibleFilterChips.innerHTML = CONVERTIBLE_FILTER_DEFS.map((def) => {
+    const active = state.convertibleActiveFilters[def.id];
+    const val = state.convertibleFilterValues[def.id];
+    const unit = def.unit ? `<span class="chip-unit">${def.unit}</span>` : "";
+    return `<div class="filter-chip${active ? " active" : ""}">
+      <span class="chip-label">${def.label}</span>
+      <input type="number" class="chip-val-input" data-filter-id="${def.id}" value="${val}" />
+      ${unit}
+      <button class="chip-add" data-filter-id="${def.id}">✓</button>
+      <button class="chip-remove" data-filter-id="${def.id}">✕</button>
+    </div>`;
+  }).join("");
+
+  convertibleFilterChips.querySelectorAll(".chip-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.convertibleActiveFilters[btn.dataset.filterId] = false;
+      applyConvertiblesFilter();
+    });
+  });
+
+  convertibleFilterChips.querySelectorAll(".chip-add").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.filterId;
+      const input = convertibleFilterChips.querySelector(`.chip-val-input[data-filter-id="${id}"]`);
+      const v = parseFloat(input?.value);
+      if (!Number.isNaN(v)) state.convertibleFilterValues[id] = v;
+      state.convertibleActiveFilters[id] = true;
+      applyConvertiblesFilter();
+    });
+  });
+}
+
+function updateConvertibleScreenButton() {
+  const topN = parseInt(convertibleTopNInput.value, 10) || 50;
+  const isSizeOn = state.convertibleScreenMode === "size";
+  const isYieldOn = state.convertibleScreenMode === "yield";
+  convertibleScreenButton.textContent = isSizeOn ? `Screened: Top ${topN} by Size ✓` : `Screen by Size: Top ${topN}`;
+  convertibleScreenButton.classList.toggle("btn-on", isSizeOn);
+  convertibleScreenButton.classList.toggle("secondary", !isSizeOn);
+  convertibleYieldScreenButton.textContent = isYieldOn ? `Screened: Top ${topN} by Yield ✓` : `Screen by Yield: Top ${topN}`;
+  convertibleYieldScreenButton.classList.toggle("btn-on", isYieldOn);
+  convertibleYieldScreenButton.classList.toggle("secondary", !isYieldOn);
+}
+
+function convertibleSortIndicator(key) {
+  if (state.convertibleSortField !== key) return "";
+  return state.convertibleSortDirection === "asc" ? " &uarr;" : " &darr;";
+}
+
+function applyConvertiblesFilter() {
+  const search = convertiblesSearchInput.value.trim().toLowerCase();
+  let rows = [...state.convertibleRows];
+  if (search) {
+    rows = rows.filter((row) => {
+      const issuer = (row.Issuer || row.PARENT_TICKER || "").toLowerCase();
+      const name = (row.NAME || "").toLowerCase();
+      return issuer.includes(search) || name.includes(search);
+    });
+  }
+
+  CONVERTIBLE_FILTER_DEFS.forEach((def) => {
+    if (state.convertibleActiveFilters[def.id]) {
+      const v = state.convertibleFilterValues[def.id];
+      rows = rows.filter((row) => def.test(row, v));
+    }
+  });
+
+  if (state.convertibleScreenMode === "size") {
+    rows = rows.filter((row) => Number(row.YIELD) >= 10 && Number(row.AMT_OUTSTANDING_MM) >= 400);
+  } else if (state.convertibleScreenMode === "yield") {
+    rows = rows.filter((row) => Number(row.AMT_OUTSTANDING_MM) >= 400);
+  }
+
+  const sf = state.convertibleScreenMode === "yield" ? "YIELD" : state.convertibleSortField;
+  const asc = state.convertibleSortDirection === "asc";
+  rows.sort((a, b) => {
+    let av = Number(a[sf]);
+    let bv = Number(b[sf]);
+    if (CONVERTIBLE_ABS_SORT_FIELDS.has(sf)) { av = Math.abs(av); bv = Math.abs(bv); }
+    return asc ? av - bv : bv - av;
+  });
+
+  const topN = parseInt(convertibleTopNInput.value, 10);
+  if (!Number.isNaN(topN) && topN > 0) rows = rows.slice(0, topN);
+
+  state.filteredConvertibleRows = rows;
+  clearConvertiblesSearchButton.classList.toggle("hidden", !convertiblesSearchInput.value);
+  const screenNote = state.convertibleScreenMode === "size"
+    ? " — Yield ≥10%, Face ≥$400M"
+    : state.convertibleScreenMode === "yield"
+    ? " — Face ≥$400M, sorted by Yield"
+    : "";
+  convertiblesStatus.textContent = `${rows.length} convertible instrument${rows.length !== 1 ? "s" : ""}${screenNote}`;
+  renderConvertibleFilterChips();
+  updateConvertibleScreenButton();
+  renderConvertiblesTable();
+}
+
+function renderConvertiblesTable() {
+  convertiblesHead.innerHTML = `
+    <tr class="header-group-row">
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">($MM)</em></th>
+      <th colspan="3" class="group-header col-group-l">Price &amp; Yield</th>
+      <th colspan="2" class="group-header col-group-l">Px Move <em>(pts)</em></th>
+      <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">($MM)</em></th>
+      <th class="col-group-l"></th>
+      <th class="col-group-l"></th>
+      <th colspan="2" class="group-header col-group-l">Coverage</th>
+    </tr>
+    <tr>
+      <th class="col-fit">Issuer</th>
+      <th class="col-fit">Security</th>
+      <th class="col-tight">Industry</th>
+      <th class="col-tight">Lien</th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header conv-sort-header" data-conv-sort="AMT_OUTSTANDING_MM">Amt Out${convertibleSortIndicator("AMT_OUTSTANDING_MM")}</button></th>
+      <th class="col-tight col-group-l">Current Px</th>
+      <th class="col-tight">Yield</th>
+      <th class="col-tight">Coupon</th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header conv-sort-header" data-conv-sort="PRICE_MOVE_3M">3M${convertibleSortIndicator("PRICE_MOVE_3M")}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header conv-sort-header" data-conv-sort="PRICE_MOVE_7D">7D${convertibleSortIndicator("PRICE_MOVE_7D")}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header conv-sort-header" data-conv-sort="MV_CHANGE_3M_MM">3M${convertibleSortIndicator("MV_CHANGE_3M_MM")}</button></th>
+      <th class="col-tight"><button type="button" class="sort-header conv-sort-header" data-conv-sort="MV_CHANGE_7D_MM">7D${convertibleSortIndicator("MV_CHANGE_7D_MM")}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header conv-sort-header" data-conv-sort="VOLUME_5D">5D Vol ($MM)${convertibleSortIndicator("VOLUME_5D")}</button></th>
+      <th class="col-group-l">52W Range</th>
+      <th class="col-tight col-group-l">Primary</th>
+      <th class="col-tight">Secondary</th>
+    </tr>
+  `;
+
+  const convHoldingTickers = new Set([
+    ...state.loanRows.filter(r => r._IS_HOLDING).map(r => r.PARENT_TICKER),
+    ...state.bondRows.filter(r => r._IS_HOLDING).map(r => r.PARENT_TICKER),
+    ...state.convertibleRows.filter(r => r._IS_HOLDING).map(r => r.PARENT_TICKER),
+  ]);
+
+  convertiblesBody.innerHTML = state.filteredConvertibleRows.map((row) => {
+    const isDirect = !!row._IS_HOLDING;
+    const isIndirect = !isDirect && convHoldingTickers.has(row.PARENT_TICKER);
+    const holdingClass = isDirect ? " holding-row" : (isIndirect ? " holding-row-indirect" : "");
+    const cells = convertibleColumns.map((col) => {
+      const cls = col.tdClass ? ` class="${col.tdClass}"` : "";
+      if (col.key === "Issuer") {
+        const hMarker = isDirect
+          ? `<sup class="holding-marker h-direct" title="Direct portfolio holding">H</sup>`
+          : isIndirect
+            ? `<sup class="holding-marker h-indirect" title="Holds in capital structure">H</sup>`
+            : "";
+        const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
+        return `<td>${row.Issuer || row.PARENT_TICKER || "-"}${hMarker}${idChip}</td>`;
+      }
+      if (col.key === "PRICE_RANGE") return `<td${cls}>${renderLoanPriceRange(row)}</td>`;
+      if (col.key === "PRICE_MOVE_3M") return `<td${cls}>${fmtPriceMove(row.PRICE_MOVE_3M)}</td>`;
+      if (col.key === "PRICE_MOVE_7D") return `<td${cls}>${fmtPriceMove(row.PRICE_MOVE_7D)}</td>`;
+      if (col.key === "MV_CHANGE_3M_MM" || col.key === "MV_CHANGE_7D_MM") {
+        const v = Number(row[col.key]);
+        if (!row[col.key] || Number.isNaN(v) || v === 0) return `<td${cls}>-</td>`;
+        const mvCls = v > 0 ? "positive" : "negative";
+        const arrow = v > 0 ? "▲" : "▼";
+        return `<td class="${(col.tdClass || "")} price-move ${mvCls}">${arrow} ${fmt(Math.abs(v), 0)}</td>`;
+      }
+      if (col.key === "AMT_OUTSTANDING_MM") return `<td${cls}>${fmt(row[col.key], 0)}</td>`;
+      if (col.key === "PX_MID") return `<td${cls}>${fmt(row[col.key], 2)}</td>`;
+      if (col.key === "YIELD") return `<td${cls}>${fmt(row[col.key], 2)}</td>`;
+      if (col.key === "COUPON_RATE") {
+        const v = Number(row.COUPON_RATE);
+        return `<td${cls}>${row.COUPON_RATE == null || Number.isNaN(v) ? "-" : fmt(v, 2)}</td>`;
+      }
+      if (col.key === "VOLUME_5D") {
+        const raw = row.VOLUME_5D;
+        const v = Number(raw) / 1000;
+        return `<td${cls}>${raw == null || Number.isNaN(Number(raw)) ? "-" : fmt(v, 1)}</td>`;
+      }
+      if (col.key === "NAME") {
+        const text = row.NAME != null ? row.NAME : "-";
+        const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
+        return `<td${cls}>${text}${idChip}</td>`;
+      }
+      if (col.key === "INDUSTRY") {
+        const text = row.INDUSTRY != null ? row.INDUSTRY : "-";
+        const idChip = row.ID ? ` <span class="id-tip" data-clip="${row.ID}">${row.ID}</span>` : "";
+        return `<td${cls}>${text}${idChip}</td>`;
+      }
+      if (col.key === "COVERAGE_PRIMARY" || col.key === "COVERAGE_SECONDARY") {
+        const slot = col.key === "COVERAGE_PRIMARY" ? "primary" : "secondary";
+        const ticker = row.PARENT_TICKER;
+        const names = (state.coverageMap[ticker] || {})[slot] || [];
+        return `<td${cls}>${renderCoverageCell(ticker, slot, names)}</td>`;
+      }
+      return `<td${cls}>${row[col.key] != null ? row[col.key] : "-"}</td>`;
+    }).join("");
+    return `<tr${holdingClass ? ` class="${holdingClass.trim()}"` : ""}>${cells}</tr>`;
+  }).join("");
+
+  document.querySelectorAll("[data-conv-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const col = btn.dataset.convSort;
+      if (state.convertibleSortField === col) {
+        state.convertibleSortDirection = state.convertibleSortDirection === "asc" ? "desc" : "asc";
+      } else {
+        state.convertibleSortField = col;
+        state.convertibleSortDirection = "desc";
+      }
+      applyConvertiblesFilter();
+    });
+  });
+
+  setupIdChipCopy(convertiblesBody);
+}
+
 function setExceptionsSubtab(tabName) {
   abnormalPriceSubtabButton.classList.toggle("active", tabName === "abnormal-price");
   exclusionsSubtabButton.classList.toggle("active", tabName === "exclusions");
@@ -1264,18 +1513,21 @@ function setActiveTab(tabName) {
   const issuerActive = tabName === "issuer";
   const loansActive = tabName === "loans";
   const bondsActive = tabName === "bonds";
+  const convertiblesActive = tabName === "convertibles";
   const moversActive = tabName === "movers";
   const exceptionsActive = tabName === "exceptions";
   const documentationActive = tabName === "documentation";
   issuerTabButton.classList.toggle("active", issuerActive);
   loansTabButton.classList.toggle("active", loansActive);
   bondsTabButton.classList.toggle("active", bondsActive);
+  convertiblesTabButton.classList.toggle("active", convertiblesActive);
   moversTabButton.classList.toggle("active", moversActive);
   exceptionsTabButton.classList.toggle("active", exceptionsActive);
   documentationTabButton.classList.toggle("active", documentationActive);
   issuerTabPanel.classList.toggle("hidden", !issuerActive);
   loansTabPanel.classList.toggle("hidden", !loansActive);
   bondsTabPanel.classList.toggle("hidden", !bondsActive);
+  convertiblesTabPanel.classList.toggle("hidden", !convertiblesActive);
   moversTabPanel.classList.toggle("hidden", !moversActive);
   exceptionsTabPanel.classList.toggle("hidden", !exceptionsActive);
   documentationTabPanel.classList.toggle("hidden", !documentationActive);
@@ -1552,11 +1804,15 @@ async function loadDashboard() {
   state.excludedRows = excludedPayload.rows;
   state.loanRows = loansPayload.rows;
   state.bondRows = bondsPayload.rows;
+  state.convertibleRows = bondsPayload.rows.filter(
+    (r) => typeof r.CALC_TYPE === "string" && r.CALC_TYPE.toLowerCase().includes("convertible")
+  );
   state.coverageMap = coveragePayload.coverages || {};
   applyFilters();
   applyMoversFilters();
   applyLoansFilter();
   applyBondsFilter();
+  applyConvertiblesFilter();
   renderAbnormalPriceTable();
   setLoading(false);
 }
@@ -1617,9 +1873,11 @@ function setupIdChipCopy(tbody) {
 }
 setupIdChipCopy(loansBody);
 setupIdChipCopy(bondsBody);
+setupIdChipCopy(convertiblesBody);
 
 loansTabButton.addEventListener("click", () => setActiveTab("loans"));
 bondsTabButton.addEventListener("click", () => setActiveTab("bonds"));
+convertiblesTabButton.addEventListener("click", () => setActiveTab("convertibles"));
 moversTabButton.addEventListener("click", () => setActiveTab("movers"));
 exceptionsTabButton.addEventListener("click", () => setActiveTab("exceptions"));
 documentationTabButton.addEventListener("click", () => setActiveTab("documentation"));
@@ -1695,6 +1953,32 @@ bondYieldScreenButton.addEventListener("click", () => {
 
 downloadBondsButton.addEventListener("click", async () => {
   await downloadExcel("/api/export/bonds", { rows: state.filteredBondRows });
+});
+
+convertiblesSearchInput.addEventListener("input", applyConvertiblesFilter);
+clearConvertiblesSearchButton.addEventListener("click", () => {
+  convertiblesSearchInput.value = "";
+  applyConvertiblesFilter();
+  convertiblesSearchInput.focus();
+});
+
+convertibleTopNInput.addEventListener("input", () => {
+  updateConvertibleScreenButton();
+  applyConvertiblesFilter();
+});
+
+convertibleScreenButton.addEventListener("click", () => {
+  state.convertibleScreenMode = state.convertibleScreenMode === "size" ? null : "size";
+  applyConvertiblesFilter();
+});
+
+convertibleYieldScreenButton.addEventListener("click", () => {
+  state.convertibleScreenMode = state.convertibleScreenMode === "yield" ? null : "yield";
+  applyConvertiblesFilter();
+});
+
+downloadConvertiblesButton.addEventListener("click", async () => {
+  await downloadExcel("/api/export/bonds", { rows: state.filteredConvertibleRows });
 });
 
 reloadDataButton.addEventListener("click", async () => {
@@ -1813,6 +2097,7 @@ coverageDropdown.addEventListener("click", (e) => {
     updateCoverageCells(_covTicker);
     renderLoansTable();
     renderBondsTable();
+    renderConvertiblesTable();
     saveCoverage(_covTicker);
   }
   hideCoverageDropdown();
@@ -1891,6 +2176,34 @@ bondsBody.addEventListener("click", (e) => {
       updateCoverageCells(ticker);
       renderLoansTable();
       renderBondsTable();
+      saveCoverage(ticker);
+    }
+    hideCoverageDropdown();
+  }
+});
+
+convertiblesBody.addEventListener("click", (e) => {
+  const addBtn = e.target.closest(".cov-add");
+  if (addBtn) {
+    e.stopPropagation();
+    const { ticker, slot } = addBtn.dataset;
+    if (!coverageDropdown.classList.contains("hidden") && _covTicker === ticker && _covSlot === slot) {
+      hideCoverageDropdown();
+    } else {
+      showCoverageDropdown(ticker, slot, addBtn);
+    }
+    return;
+  }
+  const nameSpan = e.target.closest(".cov-name");
+  if (nameSpan) {
+    e.stopPropagation();
+    const { ticker, slot, idx } = nameSpan.dataset;
+    if (state.coverageMap[ticker]) {
+      state.coverageMap[ticker][slot].splice(Number(idx), 1);
+      updateCoverageCells(ticker);
+      renderLoansTable();
+      renderBondsTable();
+      renderConvertiblesTable();
       saveCoverage(ticker);
     }
     hideCoverageDropdown();
