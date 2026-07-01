@@ -389,7 +389,7 @@ function renderMoverPriceRange(row) {
 
 const glossaryEntries = [
   { sup: "1", label: "Face ($MM)", def: "<strong>Strike Zone:</strong> face value of instruments meeting screening criteria (see below). <strong>Total:</strong> face value of all non-defaulted instruments regardless of screening criteria." },
-  { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside for Strike Zone securities, assuming prices revert to 52-week highs (52W) or par (Return to Par).<br><br><strong>52W Peak Upside:</strong> &Sigma;&nbsp;[(52W High &minus; Current Price) &divide; 100 &times; Face ($MM)]<br><strong>Return to Par:</strong> &Sigma;&nbsp;[(100 &minus; Current Price) &divide; 100 &times; Face ($MM)]<br><em>Summed across Strike Zone securities by seniority bucket.</em>" },
+  { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: `Dollar upside for Strike Zone securities, assuming prices revert to their 52-week highs or par.<div class="glossary-formula"><div><strong>52W:</strong> &Sigma; (52W High &minus; Current Price) &divide; 100 &times; Face ($MM)</div><div><strong>Par:</strong> &Sigma; (100 &minus; Current Price) &divide; 100 &times; Face ($MM)</div><div class="glossary-formula-note">Summed across Strike Zone securities by seniority bucket.</div></div>` },
   { sup: "3", label: "3M / 7D MV Change", def: "Aggregate market value change ($MM) for Strike Zone securities over the selected time period." },
   { sup: "4", label: "Price", def: "Face-weighted average mid price across Strike Zone securities." },
   { sup: "5", label: "Yield", def: "Market value-weighted average yield to maturity across Strike Zone securities." },
@@ -2047,9 +2047,13 @@ document.getElementById("glossaryButton").addEventListener("click", () => {
   const popup = document.createElement("div");
   popup.className = "glossary-popup";
   popup.innerHTML = `
-    <table>${glossaryEntries.map((e) =>
-      `<tr><td><sup>${e.sup}</sup></td><td><strong>${e.label}</strong></td><td>${e.def}</td></tr>`
-    ).join("")}</table>
+    <div class="glossary-title">Column Notes</div>
+    <div class="glossary-entries">${glossaryEntries.map((e) =>
+      `<div class="glossary-entry">
+        <div class="glossary-entry-head"><span class="glossary-sup">${e.sup}</span><span class="glossary-label">${e.label}</span></div>
+        <div class="glossary-entry-def">${e.def}</div>
+      </div>`
+    ).join("")}</div>
     <div class="glossary-criteria">
       <strong>Screening Criteria</strong>
       <table>
