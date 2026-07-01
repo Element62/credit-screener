@@ -389,7 +389,7 @@ function renderMoverPriceRange(row) {
 
 const glossaryEntries = [
   { sup: "1", label: "Face ($MM)", def: "<strong>Strike Zone:</strong> face value of instruments meeting screening criteria (see below). <strong>Total:</strong> face value of all non-defaulted instruments regardless of screening criteria." },
-  { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside for Strike Zone securities, assuming prices revert to 52-week highs (52W) or par (Return to Par)." },
+  { sup: "2", label: "52W Peak Upside / Return To Par Upside", def: "Dollar upside for Strike Zone securities, assuming prices revert to 52-week highs (52W) or par (Return to Par).<br><br><strong>52W Peak Upside:</strong> &Sigma;&nbsp;[(52W High &minus; Current Price) &divide; 100 &times; Face ($MM)]<br><strong>Return to Par:</strong> &Sigma;&nbsp;[(100 &minus; Current Price) &divide; 100 &times; Face ($MM)]<br><em>Summed across Strike Zone securities by seniority bucket.</em>" },
   { sup: "3", label: "3M / 7D MV Change", def: "Aggregate market value change ($MM) for Strike Zone securities over the selected time period." },
   { sup: "4", label: "Price", def: "Face-weighted average mid price across Strike Zone securities." },
   { sup: "5", label: "Yield", def: "Market value-weighted average yield to maturity across Strike Zone securities." },
