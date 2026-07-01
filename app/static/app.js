@@ -1077,8 +1077,9 @@ function applyBondsFilter() {
   const sf = state.bondScreenMode === "yield" ? "YIELD" : state.bondSortField;
   const asc = state.bondScreenMode === "yield" ? false : state.bondSortDirection === "asc";
   rows.sort((a, b) => {
-    let av = Number(a[sf]);
-    let bv = Number(b[sf]);
+    const useIssuerVol = sf === "VOLUME_5D" && state.bondVolMode === "issuer";
+    let av = useIssuerVol ? Number(state.issuerVolMap[a.PARENT_TICKER]) : Number(a[sf]);
+    let bv = useIssuerVol ? Number(state.issuerVolMap[b.PARENT_TICKER]) : Number(b[sf]);
     if (BOND_ABS_SORT_FIELDS.has(sf)) {
       av = Number.isNaN(av) ? -Infinity : Math.abs(av);
       bv = Number.isNaN(bv) ? -Infinity : Math.abs(bv);
