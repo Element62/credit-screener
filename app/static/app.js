@@ -25,6 +25,8 @@ const state = {
   bondScreenMode: "size",
   bondActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
   bondFilterValues: { yieldMin: 10, yieldMax: 50, priceMax: 100 },
+  bondVolMode: "instrument",
+  issuerVolMap: {},
   convertibleRows: [],
   filteredConvertibleRows: [],
   convertibleSortField: "AMT_OUTSTANDING_MM",
@@ -1108,6 +1110,16 @@ function bondSortIndicator(key) {
   return state.bondSortDirection === "asc" ? " &uarr;" : " &darr;";
 }
 
+function buildIssuerVolMap() {
+  const map = {};
+  [...state.bondRows, ...state.loanRows].forEach((r) => {
+    const ticker = r.PARENT_TICKER;
+    const v = Number(r.VOLUME_5D);
+    if (ticker && !Number.isNaN(v)) map[ticker] = (map[ticker] || 0) + v;
+  });
+  return map;
+}
+
 function renderBondsTable() {
   bondsHead.innerHTML = `
     <tr class="header-group-row">
@@ -1136,7 +1148,7 @@ function renderBondsTable() {
       <th class="col-tight"><button type="button" class="sort-header bond-sort-header" data-bond-sort="PRICE_MOVE_7D">7D${bondSortIndicator("PRICE_MOVE_7D")}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="MV_CHANGE_3M_MM">3M${bondSortIndicator("MV_CHANGE_3M_MM")}</button></th>
       <th class="col-tight"><button type="button" class="sort-header bond-sort-header" data-bond-sort="MV_CHANGE_7D_MM">7D${bondSortIndicator("MV_CHANGE_7D_MM")}</button></th>
-      <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="VOLUME_5D">5D Vol ($MM)${bondSortIndicator("VOLUME_5D")}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="VOLUME_5D">5D Vol ($MM)${bondSortIndicator("VOLUME_5D")}</button><button type="button" id="bondVolToggle" class="mv-abs-toggle${state.bondVolMode === "issuer" ? " active" : ""}" title="Toggle between this bond's volume and total issuer volume">Issuer</button></th>
       <th class="col-group-l">52W Range</th>
       <th class="col-tight col-group-l">Primary</th>
       <th class="col-tight">Secondary</th>
@@ -1181,7 +1193,9 @@ function renderBondsTable() {
         return `<td${cls}>${row.COUPON_RATE == null || Number.isNaN(v) ? "-" : fmt(v, 2)}</td>`;
       }
       if (col.key === "VOLUME_5D") {
-        const raw = row.VOLUME_5D;
+        const raw = state.bondVolMode === "issuer"
+          ? state.issuerVolMap[row.PARENT_TICKER]
+          : row.VOLUME_5D;
         const v = Number(raw) / 1000;
         return `<td${cls}>${raw == null || Number.isNaN(Number(raw)) ? "-" : fmt(v, 1)}</td>`;
       }
@@ -1205,6 +1219,15 @@ function renderBondsTable() {
     }).join("");
     return `<tr${holdingClass ? ` class="${holdingClass.trim()}"` : ""}>${cells}</tr>`;
   }).join("");
+
+  const bondVolToggleBtn = document.getElementById("bondVolToggle");
+  if (bondVolToggleBtn) {
+    bondVolToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.bondVolMode = state.bondVolMode === "issuer" ? "instrument" : "issuer";
+      renderBondsTable();
+    });
+  }
 
   document.querySelectorAll("[data-bond-sort]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1805,6 +1828,7 @@ async function loadDashboard() {
   state.convertibleRows = bondsPayload.rows.filter(
     (r) => typeof r.CALC_TYPE === "string" && r.CALC_TYPE.toLowerCase().includes("convertible")
   );
+  state.issuerVolMap = buildIssuerVolMap();
   state.coverageMap = coveragePayload.coverages || {};
   applyFilters();
   applyMoversFilters();
