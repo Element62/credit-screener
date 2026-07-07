@@ -605,14 +605,14 @@ def load_workbook(path: Path) -> WorkbookData:
             df.groupby("PARENT_TICKER")["LTM_ACCRUAL"]
             .first()
             .reset_index()
-            .rename(columns={"LTM_ACCRUAL": "LTM Accrual ($MM)"})
+            .rename(columns={"LTM_ACCRUAL": "Cash Paid for Int. ($MM)"})
         )
         issuer_display = issuer_display.merge(ltm_map, on="PARENT_TICKER", how="left")
 
     issuer_columns = [
         "PARENT_TICKER",
         "Issuer", "Sector", "Industry", "Secured Face ($BN)", "Unsecured Face ($BN)", "Preferred Face ($BN)",
-        "LTM Accrual ($MM)", "Price", "Yield", "Price All", "Yield All",
+        "Cash Paid for Int. ($MM)", "Price", "Yield", "Price All", "Yield All",
         "3M Price Move", "7D Price Move",
         "3M MV Change ($MM)", "7D MV Change ($MM)",
         "3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)",

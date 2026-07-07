@@ -227,7 +227,7 @@ function fmtIssuer(column, value) {
 
 function issuerDigits(column) {
   if (["Price", "Yield", "Price All", "Yield All"].includes(column)) return 2;
-  if (column === "LTM Accrual ($MM)") return 1;
+  if (column === "Cash Paid for Int. ($MM)") return 1;
   if (column.endsWith("($BN)")) return 2;
   if (column.endsWith("($MM)")) return 0;
   return 2;
@@ -396,6 +396,7 @@ const glossaryEntries = [
   { sup: "6", label: "5D Vol ($MM)", def: "5-day notional trading volume sourced from FINRA TRACE, representing actual dollar amounts traded." },
   { sup: "7", label: "Liquidity Score", def: "Bloomberg LQA score: a 1–100 percentile ranking of estimated liquidation cost within an asset class. 100 = most liquid (lowest cost); 1 = least liquid. Scores are relative to peers — there is no absolute meaning to any specific value." },
   { sup: "8", label: "Exp. Daily Volume ($MM)", def: "Bloomberg LQA Expected Daily Volume: estimated notional a single firm could sell in one day within the current bid-ask spread. Modeled using reference data (amount outstanding, maturity, coupon), market data (trade count, dealer quotes), and pricing data (spread, volatility)." },
+  { sup: "9", label: "Cash Paid for Int. ($MM)", def: "Cash paid out for long-term and short-term interest on any interest-bearing obligations of all consolidated entities. This amount is not reduced by allowance for funds used during construction or any capitalized interest. Interest paid only — not netted with interest received. Displayed as a positive number." },
 ];
 
 function renderIssuerTable() {
@@ -435,7 +436,7 @@ function renderIssuerTable() {
     faceTotalSecKey,  faceTotalUnsecKey,  faceTotalPrefKey,  faceTotalTotalKey,
     upsideSecKey, upsideUnsecKey, upsidePrefKey, upsideTotalKey,
     mvChangeKey, mvPctKey,
-    "LTM Accrual ($MM)", priceKey, yieldKey,
+    "Cash Paid for Int. ($MM)", priceKey, yieldKey,
     "COVERAGE PRIMARY", "COVERAGE SECONDARY",
   ];
 
@@ -468,7 +469,7 @@ function renderIssuerTable() {
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${upsideTotalKey}">Total${sortIndicator(upsideTotalKey)}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="${mvChangeKey}">$MM${sortIndicator(mvChangeKey) || "&#x21c5;"}</button><button type="button" id="mvAbsToggle" class="mv-abs-toggle${state.mvAbsSort ? " active" : ""}">ABS</button></th>
       <th class="col-tight"><button type="button" class="sort-header" data-sort="${mvPctKey}">%${sortIndicator(mvPctKey)}</button></th>
-      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="LTM Accrual ($MM)">LTM Accrual<br><em>($MM)</em>${sortIndicator("LTM Accrual ($MM)")}</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header" data-sort="Cash Paid for Int. ($MM)">Cash Paid<br>for Int. <em>($MM)</em><sup>9</sup>${sortIndicator("Cash Paid for Int. ($MM)")}</button></th>
       <th class="col-group-l"><button type="button" class="sort-header" data-sort="${priceKey}">Price (pts)<sup>4</sup>${sortIndicator(priceKey)}</button></th>
       <th><button type="button" class="sort-header" data-sort="${yieldKey}">Yield<sup>5</sup>${sortIndicator(yieldKey)}</button></th>
       <th class="col-group-l">Primary</th>
@@ -504,7 +505,7 @@ function renderIssuerTable() {
     [faceStrikeSecKey]:     "col-group-l",
     [faceTotalSecKey]:      "col-group-l",
     [upsideSecKey]:         "col-group-l",
-    "LTM Accrual ($MM)":   "col-tight col-group-l",
+    "Cash Paid for Int. ($MM)": "col-tight col-group-l",
     [priceKey]:             "col-group-l",
     "COVERAGE PRIMARY":     "col-group-l",
   };
