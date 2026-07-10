@@ -16,16 +16,19 @@ const state = {
   loanSortField: "AMT_OUTSTANDING_MM",
   loanSortDirection: "desc",
   loanScreenMode: "size",
+  loanAbsSort: true,
   loanActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
   loanFilterValues: { yieldMin: 9, yieldMax: 50, priceMax: 95 },
   bondRows: [],
   filteredBondRows: [],
-  bondSortField: "AMT_OUTSTANDING_MM",
+  bondSortField: "VOLUME_5D",
   bondSortDirection: "desc",
   bondScreenMode: "size",
-  bondActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true },
+  bondActiveFilters: { yieldMin: true, yieldMax: true, priceMax: true, exclSubord: true },
   bondFilterValues: { yieldMin: 10, yieldMax: 50, priceMax: 100 },
-  bondVolMode: "instrument",
+  bondVolMode: "issuer",
+  bondAbsSort: true,
+  bondTopYieldOnly: true,
   issuerVolMap: {},
   convertibleRows: [],
   filteredConvertibleRows: [],
@@ -105,6 +108,7 @@ const bondTopNInput = document.getElementById("bondTopNInput");
 const bondScreenButton = document.getElementById("bondScreenButton");
 const bondYieldScreenButton = document.getElementById("bondYieldScreenButton");
 const downloadBondsButton = document.getElementById("downloadBondsButton");
+const bondTopYieldButton = document.getElementById("bondTopYieldButton");
 const bondFilterChips = document.getElementById("bondFilterChips");
 const convertiblesHead = document.getElementById("convertiblesHead");
 const convertiblesBody = document.getElementById("convertiblesBody");
@@ -575,11 +579,22 @@ function renderIssuerTable() {
     });
   });
 
+  const DESC_ONLY_SORT_FIELDS = new Set([
+    "Secured Face ($MM)", "Unsecured Face ($MM)", "Preferred Face ($MM)", "Face Strike Zone ($MM)",
+    "Total Secured Face ($MM)", "Total Unsecured Face ($MM)", "Total Preferred Face ($MM)", "Face Total All ($MM)",
+    "52W PEAK UPSIDE SECURED TARGET ($MM)", "52W PEAK UPSIDE UNSECURED TARGET ($MM)",
+    "52W PEAK UPSIDE PREFERRED TARGET ($MM)", "52W PEAK UPSIDE TOTAL TARGET ($MM)",
+    "RETURN TO PAR SECURED TARGET ($MM)", "RETURN TO PAR UNSECURED TARGET ($MM)",
+    "RETURN TO PAR PREFERRED TARGET ($MM)", "RETURN TO PAR TOTAL TARGET ($MM)",
+    "Yield", "Yield All",
+  ]);
+
   document.querySelectorAll("[data-sort]").forEach((button) => {
     button.addEventListener("click", () => {
       const column = button.dataset.sort;
       const isMvCol = ["3M MV Change TARGET ($MM)", "7D MV Change TARGET ($MM)", "3M MV Pct Change", "7D MV Pct Change"].includes(column);
-      if (state.sortField === column && !(isMvCol && state.mvAbsSort)) {
+      const isDescOnly = DESC_ONLY_SORT_FIELDS.has(column);
+      if (state.sortField === column && !isDescOnly && !(isMvCol && state.mvAbsSort)) {
         state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
       } else {
         state.sortField = column;
@@ -823,7 +838,7 @@ function applyLoansFilter() {
   rows.sort((a, b) => {
     let av = Number(a[sf]);
     let bv = Number(b[sf]);
-    if (LOAN_ABS_SORT_FIELDS.has(sf)) {
+    if (LOAN_ABS_SORT_FIELDS.has(sf) && state.loanAbsSort) {
       av = Number.isNaN(av) ? -Infinity : Math.abs(av);
       bv = Number.isNaN(bv) ? -Infinity : Math.abs(bv);
     } else {
@@ -862,7 +877,7 @@ function renderLoansTable() {
       <th></th>
       <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">($MM)</em></th>
       <th colspan="3" class="group-header col-group-l">Price &amp; Yield</th>
-      <th colspan="2" class="group-header col-group-l">Px Move <em>(pts)</em></th>
+      <th colspan="2" class="group-header col-group-l">Px Move <em>(pts)</em> <button type="button" id="loanAbsToggle" class="mv-abs-toggle${state.loanAbsSort ? " active" : ""}" title="Sort by absolute move">ABS</button></th>
       <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">($MM)</em></th>
       <th class="col-group-l"></th>
       <th colspan="2" class="group-header col-group-l">Coverage</th>
@@ -949,10 +964,21 @@ function renderLoansTable() {
     return `<tr${holdingClass ? ` class="${holdingClass.trim()}"` : ""}>${cells}</tr>`;
   }).join("");
 
+  const loanAbsToggleBtn = document.getElementById("loanAbsToggle");
+  if (loanAbsToggleBtn) {
+    loanAbsToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.loanAbsSort = !state.loanAbsSort;
+      if (LOAN_ABS_SORT_FIELDS.has(state.loanSortField)) state.loanSortDirection = "desc";
+      applyLoansFilter();
+    });
+  }
+
   document.querySelectorAll("[data-loan-sort]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const col = btn.dataset.loanSort;
-      if (state.loanSortField === col) {
+      const isAbsCol = LOAN_ABS_SORT_FIELDS.has(col);
+      if (state.loanSortField === col && !(isAbsCol && state.loanAbsSort)) {
         state.loanSortDirection = state.loanSortDirection === "asc" ? "desc" : "asc";
       } else {
         state.loanSortField = col;
@@ -1015,6 +1041,11 @@ function renderBondFilterChips() {
     </span>`;
   }).join("");
 
+  const subordActive = state.bondActiveFilters.exclSubord;
+  bondFilterChips.innerHTML += subordActive
+    ? `<span class="filter-chip active">Excl. Subordinated <button class="chip-remove" data-bond-filter-id="exclSubord" type="button" title="Remove">×</button></span>`
+    : `<span class="filter-chip inactive-chip">Excl. Subordinated <button class="chip-add" data-bond-filter-id="exclSubord" type="button" title="Add filter">+</button></span>`;
+
   bondFilterChips.querySelectorAll(".chip-val-input:not(.chip-val-inactive)").forEach((input) => {
     input.addEventListener("change", () => {
       const v = parseFloat(input.value);
@@ -1050,6 +1081,9 @@ function updateBondScreenButton() {
   bondYieldScreenButton.textContent = isYieldOn ? `Screened: Top ${topN} by Yield ✓` : `Screen by Yield: Top ${topN}`;
   bondYieldScreenButton.classList.toggle("btn-on", isYieldOn);
   bondYieldScreenButton.classList.toggle("secondary", !isYieldOn);
+  bondTopYieldButton.textContent = state.bondTopYieldOnly ? "Top Yield / Issuer ✓" : "Top Yield / Issuer";
+  bondTopYieldButton.classList.toggle("btn-on", state.bondTopYieldOnly);
+  bondTopYieldButton.classList.toggle("secondary", !state.bondTopYieldOnly);
 }
 
 function applyBondsFilter() {
@@ -1062,12 +1096,22 @@ function applyBondsFilter() {
       )
     : [...state.bondRows];
 
+  // QVC volume data is pending investigation — exclude from bonds view
+  rows = rows.filter((row) =>
+    !String(row.PARENT_TICKER || "").toUpperCase().includes("QVC") &&
+    !String(row.Issuer || "").toUpperCase().includes("QVC")
+  );
+
   BOND_FILTER_DEFS.forEach((def) => {
     if (state.bondActiveFilters[def.id]) {
       const v = state.bondFilterValues[def.id];
       rows = rows.filter((row) => def.test(row, v));
     }
   });
+
+  if (state.bondActiveFilters.exclSubord) {
+    rows = rows.filter((row) => !String(row.PAYMENT_RANK || "").toLowerCase().includes("subordinat"));
+  }
 
   if (state.bondScreenMode === "size") {
     rows = rows.filter((row) => Number(row.YIELD) >= 10 && Number(row.AMT_OUTSTANDING_MM) >= 400);
@@ -1081,7 +1125,7 @@ function applyBondsFilter() {
     const useIssuerVol = sf === "VOLUME_5D" && state.bondVolMode === "issuer";
     let av = useIssuerVol ? Number(state.issuerVolMap[a.PARENT_TICKER]) : Number(a[sf]);
     let bv = useIssuerVol ? Number(state.issuerVolMap[b.PARENT_TICKER]) : Number(b[sf]);
-    if (BOND_ABS_SORT_FIELDS.has(sf)) {
+    if (BOND_ABS_SORT_FIELDS.has(sf) && state.bondAbsSort) {
       av = Number.isNaN(av) ? -Infinity : Math.abs(av);
       bv = Number.isNaN(bv) ? -Infinity : Math.abs(bv);
     } else {
@@ -1090,6 +1134,24 @@ function applyBondsFilter() {
     }
     return asc ? av - bv : bv - av;
   });
+
+  if (state.bondTopYieldOnly) {
+    const best = new Map();
+    rows.forEach((row) => {
+      const t = row.PARENT_TICKER;
+      const y = Number(row.YIELD);
+      if (!best.has(t) || y > Number(best.get(t).YIELD)) best.set(t, row);
+    });
+    rows = [...best.values()];
+    rows.sort((a, b) => {
+      const useIssuerVol = sf === "VOLUME_5D" && state.bondVolMode === "issuer";
+      let av = useIssuerVol ? Number(state.issuerVolMap[a.PARENT_TICKER]) : Number(a[sf]);
+      let bv = useIssuerVol ? Number(state.issuerVolMap[b.PARENT_TICKER]) : Number(b[sf]);
+      av = Number.isNaN(av) ? -Infinity : av;
+      bv = Number.isNaN(bv) ? -Infinity : bv;
+      return asc ? av - bv : bv - av;
+    });
+  }
 
   const topN = parseInt(bondTopNInput.value, 10);
   if (!Number.isNaN(topN) && topN > 0) rows = rows.slice(0, topN);
@@ -1131,7 +1193,7 @@ function renderBondsTable() {
       <th></th>
       <th class="group-header col-group-l">Face<br><em style="white-space:nowrap">($MM)</em></th>
       <th colspan="3" class="group-header col-group-l">Price &amp; Yield</th>
-      <th colspan="2" class="group-header col-group-l">Px Move <em>(pts)</em></th>
+      <th colspan="2" class="group-header col-group-l">Px Move <em>(pts)</em> <button type="button" id="bondAbsToggle" class="mv-abs-toggle${state.bondAbsSort ? " active" : ""}" title="Sort by absolute move">ABS</button></th>
       <th colspan="2" class="group-header col-group-l">MV Change<br><em style="white-space:nowrap">($MM)</em></th>
       <th class="col-group-l"></th>
       <th class="col-group-l"></th>
@@ -1231,10 +1293,21 @@ function renderBondsTable() {
     });
   }
 
+  const bondAbsToggleBtn = document.getElementById("bondAbsToggle");
+  if (bondAbsToggleBtn) {
+    bondAbsToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.bondAbsSort = !state.bondAbsSort;
+      if (BOND_ABS_SORT_FIELDS.has(state.bondSortField)) state.bondSortDirection = "desc";
+      applyBondsFilter();
+    });
+  }
+
   document.querySelectorAll("[data-bond-sort]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const col = btn.dataset.bondSort;
-      if (state.bondSortField === col) {
+      const isAbsCol = BOND_ABS_SORT_FIELDS.has(col);
+      if (state.bondSortField === col && !(isAbsCol && state.bondAbsSort)) {
         state.bondSortDirection = state.bondSortDirection === "asc" ? "desc" : "asc";
       } else {
         state.bondSortField = col;
@@ -1972,6 +2045,12 @@ bondScreenButton.addEventListener("click", () => {
 
 bondYieldScreenButton.addEventListener("click", () => {
   state.bondScreenMode = state.bondScreenMode === "yield" ? null : "yield";
+  applyBondsFilter();
+});
+
+bondTopYieldButton.addEventListener("click", () => {
+  state.bondTopYieldOnly = !state.bondTopYieldOnly;
+  updateBondScreenButton();
   applyBondsFilter();
 });
 

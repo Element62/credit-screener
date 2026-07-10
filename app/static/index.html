@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Credit Screener</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260707a" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260710a" />
   </head>
   <body>
     <div class="page-shell">
@@ -194,6 +194,9 @@
                   <button id="bondYieldScreenButton" type="button" class="secondary">Screen by Yield: Top 50</button>
                 </label>
                 <label>&nbsp;
+                  <button id="bondTopYieldButton" type="button" class="secondary">Top Yield / Issuer</button>
+                </label>
+                <label>&nbsp;
                   <button id="downloadBondsButton" type="button" class="secondary">Download Bonds View</button>
                 </label>
               </div>
@@ -315,6 +318,9 @@
                 <p id="abnormalPriceStatus" class="status-bar"></p>
               </div>
             </div>
+            <div class="exceptions-note">
+              <strong>Note:</strong> QVC total trading volume is pending investigation and may not accurately reflect market activity — treat its ranking on the Bonds page with caution.
+            </div>
             <div class="subtab-strip">
               <button id="abnormalPriceSubtabButton" type="button" class="tab-button active">Abnormal Price</button>
               <button id="exclusionsSubtabButton" type="button" class="tab-button">Exclusions</button>
@@ -435,6 +441,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260707a"></script>
+    <script src="/static/app.js?v=20260710a"></script>
   </body>
 </html>
