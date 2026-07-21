@@ -18,6 +18,7 @@ from .auth import SESSION_COOKIE, create_session_token, decode_session_token
 from .config import DATA_DIR, load_settings
 from .data_loader import WorkbookData, load_workbook
 from .db import get_all_coverage, init_db, save_coverage
+from .market_data import load_market_data
 from .report_processor import ReportProcessorService, normalize_company_name
 
 
@@ -390,6 +391,25 @@ def session(request: Request) -> JSONResponse:
     if not user:
         return JSONResponse({"authenticated": False})
     return JSONResponse({"authenticated": True, "username": user.username})
+
+
+_market_cache: dict = {"mtime": None, "data": None}
+
+
+def ensure_market_loaded() -> dict:
+    path = settings.market_data_path
+    if not path.exists():
+        raise HTTPException(status_code=500, detail=f"Market data not found: {path}")
+    mtime = path.stat().st_mtime
+    if _market_cache["data"] is None or _market_cache["mtime"] != mtime:
+        _market_cache["data"] = load_market_data(path)
+        _market_cache["mtime"] = mtime
+    return _market_cache["data"]
+
+
+@app.get("/api/market")
+def market(_: str = Depends(get_current_user)) -> JSONResponse:
+    return JSONResponse(ensure_market_loaded())
 
 
 @app.get("/api/dashboard")

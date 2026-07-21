@@ -515,6 +515,40 @@ def load_workbook(path: Path) -> WorkbookData:
             lambda x: None if (pd.isna(x) or str(x).startswith("#")) else x
         )
 
+    # Per-instrument strike-zone (screening) flag — mirrors the eligibility
+    # criteria used for issuer-level TARGET aggregates in _issuer_metrics.
+    if anchor_date:
+        _today = pd.Timestamp(anchor_date)
+        _yield = pd.to_numeric(df["YIELD"], errors="coerce") if "YIELD" in df.columns else pd.Series(index=df.index, dtype="float64")
+        _maturity = pd.to_datetime(df["MATURITY"], errors="coerce") if "MATURITY" in df.columns else pd.Series(pd.NaT, index=df.index)
+        _normal = ~(px > 120)
+        _maturity_ok = _maturity.isna() | (_maturity > _today + pd.DateOffset(months=2))
+        _not_defaulted = ~df["_IS_DEFAULTED"].fillna(False).astype(bool)
+        _is_loan = df["LOAN_TYPE"].notna() if "LOAN_TYPE" in df.columns else pd.Series(False, index=df.index)
+        _is_usd = df["ISS_CURRENCY"].fillna("USD").astype(str).str.upper().eq("USD") if "ISS_CURRENCY" in df.columns else pd.Series(True, index=df.index)
+        _rank_lower = df["PAYMENT_RANK"].fillna("").astype(str).str.lower()
+        _loan_elig = (
+            _normal & _not_defaulted & _is_loan & _is_usd
+            & face.notna() & (face >= 700_000_000)
+            & _yield.notna() & (_yield >= 9) & (_yield <= 50)
+            & px.notna() & (px <= 95) & _maturity_ok
+        )
+        _bond_elig = (
+            _normal & _not_defaulted & ~_is_loan & _is_usd
+            & face.notna() & (face >= 400_000_000)
+            & _yield.notna() & (_yield >= 10) & (_yield <= 50)
+            & px.notna() & (px <= 100) & _maturity_ok
+        )
+        _combined = _loan_elig | _bond_elig
+        _is_pref = df["_IS_PREFERRED"]
+        _is_sec = df["_IS_SECURED"]
+        _secured_c = _combined & _is_sec & ~_is_pref
+        _unsecured_c = _combined & ~_is_sec & ~_is_pref & ~_rank_lower.str.contains("subordinated")
+        _pref_c = _combined & _is_pref
+        df["_IN_STRIKE_ZONE"] = (_secured_c | _unsecured_c | _pref_c).fillna(False)
+    else:
+        df["_IN_STRIKE_ZONE"] = False
+
     issuer_agg = _issuer_metrics(df, anchor_date) if anchor_date else pd.DataFrame(columns=["PARENT_TICKER"])
     summary_df = df[~(pd.to_numeric(df["PX_MID"], errors="coerce") > 120)].copy()
     issuer_display = (
@@ -805,7 +839,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "RESET_INDEX", "LN_CURRENT_MARGIN", "CPN_VALUE",
         "PX_HIGH_52W", "DATE_OF_HIGH", "PX_LOW_52W", "DATE_OF_LOW",
         "PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM",
-        "_IS_HOLDING", "_IS_DEFAULTED",
+        "VOLUME_5D", "_IN_STRIKE_ZONE", "_IS_HOLDING", "_IS_DEFAULTED",
     ]
     if "LOAN_TYPE" in df.columns:
         loans_df = df[df["LOAN_TYPE"].notna()].copy()
@@ -833,7 +867,7 @@ def load_workbook(path: Path) -> WorkbookData:
         "AMT_OUTSTANDING", "PX_MID", "YIELD", "MATURITY", "COUPON_RATE", "COUPON_TYPE",
         "PX_HIGH_52W", "DATE_OF_HIGH", "PX_LOW_52W", "DATE_OF_LOW",
         "PRICE_MOVE_3M", "PRICE_MOVE_7D", "MV_CHANGE_3M_MM", "MV_CHANGE_7D_MM",
-        "VOLUME_5D", "CALC_TYPE", "_IS_HOLDING", "_IS_DEFAULTED",
+        "VOLUME_5D", "CALC_TYPE", "_IN_STRIKE_ZONE", "_IS_HOLDING", "_IS_DEFAULTED",
     ]
     if "LOAN_TYPE" in df.columns:
         bonds_df = df[df["LOAN_TYPE"].isna()].copy()

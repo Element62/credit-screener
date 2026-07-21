@@ -44,6 +44,7 @@ const state = {
   sortField: "52W PEAK UPSIDE SECURED TARGET ($MM)",
   sortDirection: "desc",
   coverageMap: {},
+  market: null,
 };
 
 const loginCard = document.getElementById("loginCard");
@@ -52,6 +53,10 @@ const loginForm = document.getElementById("loginForm");
 const loginError = document.getElementById("loginError");
 const logoutButton = document.getElementById("logoutButton");
 const loadingBanner = document.getElementById("loadingBanner");
+const marketTabButton = document.getElementById("marketTabButton");
+const marketTabPanel = document.getElementById("marketTabPanel");
+const marketContent = document.getElementById("marketContent");
+const marketStatus = document.getElementById("marketStatus");
 const issuerTabButton = document.getElementById("issuerTabButton");
 const loansTabButton = document.getElementById("loansTabButton");
 const bondsTabButton = document.getElementById("bondsTabButton");
@@ -62,6 +67,12 @@ const loansTabPanel = document.getElementById("loansTabPanel");
 const bondsTabPanel = document.getElementById("bondsTabPanel");
 const convertiblesTabButton = document.getElementById("convertiblesTabButton");
 const convertiblesTabPanel = document.getElementById("convertiblesTabPanel");
+const equityTabButton = document.getElementById("equityTabButton");
+const equityTabPanel = document.getElementById("equityTabPanel");
+const equityHead = document.getElementById("equityHead");
+const equityBody = document.getElementById("equityBody");
+const equitySearchInput = document.getElementById("equitySearchInput");
+const equityStatus = document.getElementById("equityStatus");
 const moversTabPanel = document.getElementById("moversTabPanel");
 const exceptionsTabPanel = document.getElementById("exceptionsTabPanel");
 const documentationTabButton = document.getElementById("documentationTabButton");
@@ -603,6 +614,245 @@ function renderIssuerTable() {
       applyFilters();
     });
   });
+}
+
+// ── Equity tab ─────────────────────────────────────────────────────────────
+// Snapshot data (hardcoded until the equity feed is added to Master_File).
+const EQUITY_AS_OF = "07/17/26";
+const equityData = [
+  { section: "Portfolio Equities", rows: [
+    { t: "BLCO",  n: "Bausch + Lomb Corp",            tev: 10681,   mc: 5806,  px: 16.26, opps: 56.0,  wow: -2.8, mom: 9.4,   ytd: -4.8,  ltm: "13.0x", e25: "12.1x", e26: "10.3x", adtv: 0.4, flt: 0.9 },
+    { t: "EXE",   n: "Expand Energy Corp",            tev: 23973,   mc: 21083, px: 88.13, opps: 461.6, wow: -0.9, mom: 0.8,   ytd: -20.1, ltm: "4.2x",  e25: "4.8x",  e26: "4.1x",  adtv: 3.9, flt: 1.6 },
+    { t: "GTX",   n: "Garrett Motion Inc",            tev: 7274,    mc: 5947,  px: 31.77, opps: 182.5, wow: -2.5, mom: -5.9,  ytd: 82.3,  ltm: "11.9x", e25: "11.6x", e26: "10.6x", adtv: 1.8, flt: 1.1 },
+    { t: "LBTYA", n: "Liberty Global Ltd",            tev: 11097,   mc: 3492,  px: 10.41, opps: 12.8,  wow: -2.3, mom: -8.8,  ytd: -6.6,  ltm: "9.1x",  e25: "9.0x",  e26: "8.0x",  adtv: 1.3, flt: 0.8 },
+    { t: "LILAK", n: "Liberty Latin America Ltd",     tev: 10153,   mc: 1477,  px: 7.33,  opps: 17.8,  wow: 0.8,  mom: 39.6,  ytd: 44.7,  ltm: "4.4x",  e25: "6.1x",  e26: "6.3x",  adtv: 1.4, flt: 1.2 },
+    { t: "RWAY",  n: "Runway Growth Finance Corp",    tev: 678,     mc: 239,   px: 5.63,  opps: 39.6,  wow: 6.8,  mom: 2.6,   ytd: -37.0, ltm: "8.7x",  e25: "--",    e26: "--",    adtv: 0.8, flt: 1.9 },
+    { t: "VNOM",  n: "Viper Energy Inc",              tev: 17552,   mc: 15977, px: 44.38, opps: 168.0, wow: 6.5,  mom: 2.4,   ytd: 14.9,  ltm: "14.2x", e25: "13.7x", e26: "8.7x",  adtv: 1.4, flt: 0.8 },
+    { t: "SGRY",  n: "Surgery Partners Inc",          tev: 7730,    mc: 2091,  px: 15.99, opps: 25.8,  wow: -4.7, mom: 12.4,  ytd: 3.5,   ltm: "10.2x", e25: "14.4x", e26: "14.5x", adtv: 1.4, flt: 1.7 },
+    { t: "TDS",   n: "Telephone and Data Systems Inc", tev: 5207,   mc: 3906,  px: 34.32, opps: 110.6, wow: -1.1, mom: -12.9, ytd: -16.3, ltm: "14.5x", e25: "5.9x",  e26: "10.0x", adtv: 1.2, flt: 1.3 },
+    { t: "TRMD",  n: "TORM PLC",                       tev: 3794,   mc: 2909,  px: 28.45, opps: 678.2, wow: 1.4,  mom: -2.0,  ytd: 45.3,  ltm: "6.9x",  e25: "6.9x",  e26: "3.7x",  adtv: 0.4, flt: 1.6 },
+  ]},
+  { section: "Other Monitored Equities", rows: [
+    { t: "ALIT",  n: "Alight Inc",                     tev: 2405,    mc: 583,   px: 21.74, opps: null, wow: 18.0,  mom: 82.6,  ytd: -44.3, ltm: "4.7x",  e25: "4.0x",  e26: "5.5x",  adtv: 0.7, flt: 3.5 },
+    { t: "AMBP",  n: "Ardagh Metal Packaging SA",      tev: 6708,    mc: 2803,  px: 4.69,  opps: null, wow: 1.3,   mom: 7.8,   ytd: 14.4,  ltm: "9.2x",  e25: "9.2x",  e26: "8.7x",  adtv: 2.1, flt: 1.5 },
+    { t: "CCO",   n: "Clear Channel Outdoor Holdings Inc", tev: 7504, mc: 1232, px: 2.42, opps: null, wow: 0.4,   mom: 0.8,   ytd: 9.5,   ltm: "9.9x",  e25: "15.2x", e26: "13.8x", adtv: 3.3, flt: 1.0 },
+    { t: "FMCC",  n: "Federal Home Loan Mortgage Corp", tev: 3434492, mc: 17755, px: 5.49, opps: null, wow: -0.2, mom: -7.6,  ytd: -45.9, ltm: "28.2x", e25: "--",    e26: "--",    adtv: 1.6, flt: 0.1 },
+    { t: "FNMA",  n: "Federal National Mortgage Association", tev: 4388314, mc: 34685, px: 6.02, opps: null, wow: -1.3, mom: -4.6, ytd: -43.9, ltm: "--", e25: "--", e26: "--", adtv: 3.2, flt: 0.1 },
+    { t: "IHRT",  n: "iHeartMedia Inc",                tev: 6233,    mc: 599,   px: 3.83,  opps: null, wow: -5.9,  mom: 2.4,   ytd: -7.9,  ltm: "8.2x",  e25: "9.0x",  e26: "7.8x",  adtv: 0.5, flt: 0.5 },
+    { t: "OSG",   n: "Octave Specialty Group Inc",     tev: 615,     mc: 275,   px: 6.11,  opps: null, wow: 0.5,   mom: 8.5,   ytd: -21.5, ltm: "--",    e25: "n/a",   e26: "--",    adtv: 0.3, flt: 0.8 },
+    { t: "QVCAQ", n: "QVC Group Inc",                  tev: 4815,    mc: 0,     px: 0.06,  opps: null, wow: -42.5, mom: -64.9, ytd: -99.4, ltm: "5.3x",  e25: "--",    e26: "--",    adtv: 0.3, flt: 3.6 },
+    { t: "RYAM",  n: "Rayonier Advanced Materials Inc", tev: 1262,   mc: 555,   px: 8.23,  opps: null, wow: 16.7,  mom: -9.3,  ytd: 39.7,  ltm: "8.1x",  e25: "9.3x",  e26: "7.9x",  adtv: 0.8, flt: 1.3 },
+  ]},
+  { section: "Biggest Moves Down WoW", rows: [
+    { t: "OPTU",  n: "Optimum Communications Inc",     tev: 26078,   mc: 410,   px: 0.86,  opps: null, wow: -30.0, mom: -31.1, ytd: -47.8, ltm: "7.8x",  e25: "7.8x",  e26: "8.1x",  adtv: 6.5,  flt: 2.3 },
+    { t: "INDI",  n: "indie Semiconductor Inc",        tev: 1151,    mc: 870,   px: 3.83,  opps: null, wow: -18.7, mom: -2.5,  ytd: 8.5,   ltm: "n/a",   e25: "n/a",   e26: "n/a",   adtv: 4.7,  flt: 2.3 },
+    { t: "CCOI",  n: "Cogent Communications Holdings Inc", tev: 3071, mc: 550,  px: 10.97, opps: null, wow: -13.2, mom: -24.9, ytd: -49.1, ltm: "12.8x", e25: "10.5x", e26: "10.0x", adtv: 1.1,  flt: 2.5 },
+    { t: "SG",    n: "Sweetgreen Inc",                 tev: 1041,    mc: 841,   px: 7.08,  opps: null, wow: -12.3, mom: -16.9, ytd: 4.7,   ltm: "94.3x", e25: "n/a",   e26: "401.7x", adtv: 7.4, flt: 7.4 },
+    { t: "EVC",   n: "Entravision Communications Corp", tev: 1123,   mc: 984,   px: 10.69, opps: null, wow: -11.5, mom: 13.7,  ytd: 264.8, ltm: "73.1x", e25: "--",    e26: "--",    adtv: 1.4,  flt: 2.4 },
+    { t: "HTZ",   n: "Hertz Global Holdings Inc",      tev: 3362,    mc: 634,   px: 1.80,  opps: null, wow: -17.1, mom: -62.7, ytd: -65.0, ltm: "1.1x",  e25: "n/a",   e26: "12.3x", adtv: 17.0, flt: 10.7 },
+    { t: "GO",    n: "Grocery Outlet Holding Corp",    tev: 2717,    mc: 934,   px: 9.44,  opps: null, wow: -7.5,  mom: -0.4,  ytd: -6.5,  ltm: "5.1x",  e25: "10.5x", e26: "12.0x", adtv: 1.9,  flt: 2.0 },
+    { t: "BGS",   n: "B&G Foods Inc",                  tev: 2295,    mc: 301,   px: 3.71,  opps: null, wow: -4.1,  mom: -4.9,  ytd: -13.7, ltm: "8.1x",  e25: "8.4x",  e26: "8.2x",  adtv: 2.2,  flt: 2.8 },
+  ]},
+];
+
+function fmtEquityPct(v) {
+  if (v === null || v === undefined || v === "") return "-";
+  const n = Number(v);
+  if (Number.isNaN(n)) return "-";
+  const cls = n < 0 ? "negative" : n > 0 ? "positive" : "neutral";
+  const txt = n < 0 ? `(${fmt(Math.abs(n), 1)}%)` : `${fmt(n, 1)}%`;
+  return `<span class="price-move ${cls}">${txt}</span>`;
+}
+
+function renderEquityTable() {
+  equityHead.innerHTML = `
+    <tr class="header-group-row">
+      <th></th>
+      <th></th>
+      <th class="col-group-l"></th>
+      <th></th>
+      <th class="col-group-l"></th>
+      <th></th>
+      <th colspan="3" class="group-header col-group-l">Security Performance</th>
+      <th colspan="3" class="group-header col-group-l">EV / EBITDA</th>
+      <th colspan="2" class="group-header col-group-l">5-Day ADTV</th>
+    </tr>
+    <tr>
+      <th class="col-fit">Ticker</th>
+      <th class="col-fit">Name</th>
+      <th class="col-tight col-group-l">TEV <em>($M)</em></th>
+      <th class="col-tight">Mkt Cap <em>($M)</em></th>
+      <th class="col-tight col-group-l">Share Px</th>
+      <th class="col-tight">Opps MV <em>($M)</em></th>
+      <th class="col-tight col-group-l">WoW</th>
+      <th class="col-tight">MoM</th>
+      <th class="col-tight">YTD</th>
+      <th class="col-tight col-group-l">LTM</th>
+      <th class="col-tight">2025E</th>
+      <th class="col-tight">2026E</th>
+      <th class="col-tight col-group-l">Shares</th>
+      <th class="col-tight">% Float</th>
+    </tr>
+  `;
+
+  const search = (equitySearchInput.value || "").trim().toLowerCase();
+  let count = 0;
+  const html = equityData.map((sec) => {
+    const rows = sec.rows.filter((r) =>
+      !search || r.t.toLowerCase().includes(search) || r.n.toLowerCase().includes(search)
+    );
+    if (!rows.length) return "";
+    count += rows.length;
+    const header = `<tr class="equity-section-row"><td colspan="14">${sec.section}</td></tr>`;
+    const body = rows.map((r) => `
+      <tr>
+        <td>${r.t}</td>
+        <td>${r.n}</td>
+        <td class="col-tight col-group-l">${fmt(r.tev, 0)}</td>
+        <td class="col-tight">${fmt(r.mc, 0)}</td>
+        <td class="col-tight col-group-l">${fmt(r.px, 2)}</td>
+        <td class="col-tight">${r.opps == null ? "-" : fmt(r.opps, 1)}</td>
+        <td class="col-tight col-group-l">${fmtEquityPct(r.wow)}</td>
+        <td class="col-tight">${fmtEquityPct(r.mom)}</td>
+        <td class="col-tight">${fmtEquityPct(r.ytd)}</td>
+        <td class="col-tight col-group-l">${r.ltm}</td>
+        <td class="col-tight">${r.e25}</td>
+        <td class="col-tight">${r.e26}</td>
+        <td class="col-tight col-group-l">${fmt(r.adtv, 1)}</td>
+        <td class="col-tight">${fmt(r.flt, 1)}%</td>
+      </tr>`).join("");
+    return header + body;
+  }).join("");
+
+  equityBody.innerHTML = html || `<tr><td colspan="14" class="status-bar">No equities match your search.</td></tr>`;
+  equityStatus.textContent = `${count} equit${count === 1 ? "y" : "ies"} — as of ${EQUITY_AS_OF}`;
+}
+
+// ── Market tab ─────────────────────────────────────────────────────────────
+function mktNum(v, d = 0) {
+  if (v === null || v === undefined || v === "") return "-";
+  const n = Number(v);
+  if (Number.isNaN(n)) return "-";
+  return n.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d });
+}
+
+function mktSpreadChg(v) {
+  if (v === null || v === undefined || v === "") return "-";
+  const n = Number(v);
+  if (Number.isNaN(n)) return "-";
+  const cls = n < 0 ? "positive" : n > 0 ? "negative" : "neutral";
+  return `<span class="price-move ${cls}">${(n > 0 ? "+" : "") + mktNum(n, 0)}</span>`;
+}
+
+function mktRet(v) {
+  if (v === null || v === undefined || v === "") return "-";
+  const n = Number(v) * 100;
+  if (Number.isNaN(n)) return "-";
+  const cls = n < 0 ? "negative" : n > 0 ? "positive" : "neutral";
+  const txt = n < 0 ? `(${Math.abs(n).toFixed(2)}%)` : `${n.toFixed(2)}%`;
+  return `<span class="price-move ${cls}">${txt}</span>`;
+}
+
+function marketSpreadTable(block) {
+  if (!block) return "";
+  const cols = block.columns || [];
+  // Columns like "B/BB" or "CCC/B" are the spread differential between two
+  // rating buckets, not a level — relabel and visually separate them.
+  const meta = cols.map((c) => {
+    const m = /^([A-Za-z]+)\/([A-Za-z]+)$/.exec(String(c).trim());
+    return m ? { label: `${m[1]}–${m[2]}`, quality: true } : { label: c, quality: false };
+  });
+  const firstQ = meta.findIndex((x) => x.quality);
+  const sep = (i) => (i === firstQ ? " col-group-l" : "");
+  const latest = block.latest || { values: [] };
+  const head = `<tr><th class="col-fit"></th>${meta.map((x, i) => `<th class="col-tight${sep(i)}">${x.label}</th>`).join("")}</tr>`;
+  const latestRow = `<tr class="market-index-row"><td>${latest.date || "Current"}</td>${meta.map((_, i) => `<td class="col-tight${sep(i)}">${mktNum((latest.values || [])[i], 0)}</td>`).join("")}</tr>`;
+  const changeRows = (block.changes || []).map((ch) =>
+    `<tr><td>${ch.label}</td>${meta.map((_, i) => `<td class="col-tight${sep(i)}">${mktSpreadChg(ch.values[i])}</td>`).join("")}</tr>`
+  ).join("");
+  const qCols = meta.filter((x) => x.quality).map((x) => x.label);
+  const note = qCols.length
+    ? `<p class="market-note">${qCols.join(", ")} = spread differential between the two rating buckets (quality/decompression spread).</p>`
+    : "";
+  return `
+    <div class="market-panel">
+      <h3 class="market-h">${block.title || ""}</h3>
+      <p class="market-sub">${block.subtitle || ""} <span class="market-unit">(bps)</span></p>
+      <div class="table-wrap"><table>
+        <thead>${head}</thead>
+        <tbody>${latestRow}${changeRows}</tbody>
+      </table></div>
+      ${note}
+    </div>`;
+}
+
+function marketPerfTable(block) {
+  if (!block) return "";
+  const rows = (block.sectors || []).filter((s) => !s.is_index).map((s) =>
+    `<tr>
+       <td>${s.sector}</td>
+       <td class="col-tight">${mktRet(s.week)}</td>
+       <td class="col-tight">${mktRet(s.ytd)}</td>
+     </tr>`
+  ).join("");
+  return `
+    <div class="market-panel">
+      <h3 class="market-h">${block.title || ""}</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th class="col-fit">Sector</th><th class="col-tight">Week</th><th class="col-tight">YTD</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+}
+
+function marketDefaultsTable(block) {
+  if (!block || !(block.rows || []).length) return "";
+  const rows = block.rows.map((r) => `
+    <tr>
+      <td class="col-tight">${r.date}</td>
+      <td>${r.issuer}</td>
+      <td class="col-tight">${mktNum(r.bonds, 1)}</td>
+      <td class="col-tight">${mktNum(r.loans, 1)}</td>
+      <td class="col-tight"><strong>${mktNum(r.total, 1)}</strong></td>
+      <td>${r.industry}</td>
+      <td>${r.action}</td>
+    </tr>`).join("");
+  return `
+    <section class="card">
+      <h2 class="market-section-title">Recent Defaults</h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th class="col-fit">Date</th><th>Issuer</th>
+          <th class="col-tight">Bonds ($mn)</th><th class="col-tight">Loans ($mn)</th>
+          <th class="col-tight">Total ($mn)</th><th>Industry</th><th>Action</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      ${block.note ? `<p class="market-note">${block.note}</p>` : ""}
+    </section>`;
+}
+
+function renderMarketTab() {
+  const m = state.market;
+  if (!m) { marketContent.innerHTML = ""; return; }
+  marketStatus.textContent = m.as_of ? `As of ${m.as_of}` : "";
+  marketContent.innerHTML = `
+    <section class="card">
+      <h2 class="market-section-title">Spreads &amp; Yields</h2>
+      <div class="market-grid">
+        ${marketSpreadTable(m.hy_spreads)}
+        ${marketSpreadTable(m.loan_spreads)}
+      </div>
+    </section>
+    <section class="card">
+      <h2 class="market-section-title">Performance by Sector</h2>
+      <div class="market-grid">
+        ${marketPerfTable(m.hy_perf)}
+        ${marketPerfTable(m.loan_perf)}
+      </div>
+    </section>
+    ${marketDefaultsTable(m.defaults)}
+  `;
 }
 
 function renderMoversChart() {
@@ -1175,8 +1425,10 @@ function bondSortIndicator(key) {
 }
 
 function buildIssuerVolMap() {
+  // Aggregate 5D volume across all strike-zone (screened) instruments per issuer
   const map = {};
   [...state.bondRows, ...state.loanRows].forEach((r) => {
+    if (!r._IN_STRIKE_ZONE) return;
     const ticker = r.PARENT_TICKER;
     const v = Number(r.VOLUME_5D);
     if (ticker && !Number.isNaN(v)) map[ticker] = (map[ticker] || 0) + v;
@@ -1212,7 +1464,7 @@ function renderBondsTable() {
       <th class="col-tight"><button type="button" class="sort-header bond-sort-header" data-bond-sort="PRICE_MOVE_7D">7D${bondSortIndicator("PRICE_MOVE_7D")}</button></th>
       <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="MV_CHANGE_3M_MM">3M${bondSortIndicator("MV_CHANGE_3M_MM")}</button></th>
       <th class="col-tight"><button type="button" class="sort-header bond-sort-header" data-bond-sort="MV_CHANGE_7D_MM">7D${bondSortIndicator("MV_CHANGE_7D_MM")}</button></th>
-      <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="VOLUME_5D">5D Vol ($MM)${bondSortIndicator("VOLUME_5D")}</button><button type="button" id="bondVolToggle" class="mv-abs-toggle${state.bondVolMode === "issuer" ? " active" : ""}" title="Toggle between this bond's volume and total issuer volume">Issuer</button></th>
+      <th class="col-tight col-group-l"><button type="button" class="sort-header bond-sort-header" data-bond-sort="VOLUME_5D">5D Vol ($MM)${bondSortIndicator("VOLUME_5D")}</button><button type="button" id="bondVolToggle" class="mv-abs-toggle${state.bondVolMode === "issuer" ? " active" : ""}" title="Toggle between this bond's volume and total 5D volume across the issuer's strike-zone securities">Issuer</button></th>
       <th class="col-group-l">52W Range</th>
       <th class="col-tight col-group-l">Primary</th>
       <th class="col-tight">Secondary</th>
@@ -1606,24 +1858,30 @@ function applyMoversFilters() {
 }
 
 function setActiveTab(tabName) {
+  const marketActive = tabName === "market";
   const issuerActive = tabName === "issuer";
   const loansActive = tabName === "loans";
   const bondsActive = tabName === "bonds";
   const convertiblesActive = tabName === "convertibles";
+  const equityActive = tabName === "equity";
   const moversActive = tabName === "movers";
   const exceptionsActive = tabName === "exceptions";
   const documentationActive = tabName === "documentation";
+  marketTabButton.classList.toggle("active", marketActive);
   issuerTabButton.classList.toggle("active", issuerActive);
   loansTabButton.classList.toggle("active", loansActive);
   bondsTabButton.classList.toggle("active", bondsActive);
   convertiblesTabButton.classList.toggle("active", convertiblesActive);
+  equityTabButton.classList.toggle("active", equityActive);
   moversTabButton.classList.toggle("active", moversActive);
   exceptionsTabButton.classList.toggle("active", exceptionsActive);
   documentationTabButton.classList.toggle("active", documentationActive);
+  marketTabPanel.classList.toggle("hidden", !marketActive);
   issuerTabPanel.classList.toggle("hidden", !issuerActive);
   loansTabPanel.classList.toggle("hidden", !loansActive);
   bondsTabPanel.classList.toggle("hidden", !bondsActive);
   convertiblesTabPanel.classList.toggle("hidden", !convertiblesActive);
+  equityTabPanel.classList.toggle("hidden", !equityActive);
   moversTabPanel.classList.toggle("hidden", !moversActive);
   exceptionsTabPanel.classList.toggle("hidden", !exceptionsActive);
   documentationTabPanel.classList.toggle("hidden", !documentationActive);
@@ -1861,7 +2119,7 @@ async function openIssuerDetail(parentTicker) {
 
 async function loadDashboard() {
   setLoading(true, "Loading...");
-  const [dashboardPayload, moversPayload, abnormalPricesPayload, excludedPayload, loansPayload, bondsPayload, coveragePayload] = await Promise.all([
+  const [dashboardPayload, moversPayload, abnormalPricesPayload, excludedPayload, loansPayload, bondsPayload, coveragePayload, marketPayload] = await Promise.all([
     fetchJson("/api/dashboard"),
     fetchJson("/api/price-movers"),
     fetchJson("/api/abnormal-prices"),
@@ -1869,7 +2127,9 @@ async function loadDashboard() {
     fetchJson("/api/loans"),
     fetchJson("/api/bonds"),
     fetchJson("/api/coverage"),
+    fetchJson("/api/market"),
   ]);
+  state.market = marketPayload;
   state.issuers = dashboardPayload.issuers;
   state.filters = dashboardPayload.filters;
   state.metadata = dashboardPayload.metadata;
@@ -1910,6 +2170,8 @@ async function loadDashboard() {
   applyLoansFilter();
   applyBondsFilter();
   applyConvertiblesFilter();
+  renderEquityTable();
+  renderMarketTab();
   renderAbnormalPriceTable();
   setLoading(false);
 }
@@ -1954,6 +2216,7 @@ logoutButton.addEventListener("click", async () => {
   window.location.reload();
 });
 
+marketTabButton.addEventListener("click", () => setActiveTab("market"));
 issuerTabButton.addEventListener("click", () => setActiveTab("issuer"));
 function setupIdChipCopy(tbody) {
   tbody.addEventListener("click", (e) => {
@@ -1975,7 +2238,9 @@ setupIdChipCopy(convertiblesBody);
 loansTabButton.addEventListener("click", () => setActiveTab("loans"));
 bondsTabButton.addEventListener("click", () => setActiveTab("bonds"));
 convertiblesTabButton.addEventListener("click", () => setActiveTab("convertibles"));
+equityTabButton.addEventListener("click", () => setActiveTab("equity"));
 moversTabButton.addEventListener("click", () => setActiveTab("movers"));
+equitySearchInput.addEventListener("input", renderEquityTable);
 exceptionsTabButton.addEventListener("click", () => setActiveTab("exceptions"));
 documentationTabButton.addEventListener("click", () => setActiveTab("documentation"));
 abnormalPriceSubtabButton.addEventListener("click", () => {

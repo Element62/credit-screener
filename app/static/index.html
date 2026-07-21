@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Credit Screener</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260710a" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260721c" />
   </head>
   <body>
     <div class="page-shell">
@@ -33,17 +33,32 @@
 
         <section class="card">
           <div class="tab-strip">
-            <button id="issuerTabButton" type="button" class="tab-button active">Issuer Screen</button>
+            <button id="marketTabButton" type="button" class="tab-button active">Market</button>
+            <button id="issuerTabButton" type="button" class="tab-button">Issuer Screen</button>
             <button id="loansTabButton" type="button" class="tab-button">Loans</button>
             <button id="bondsTabButton" type="button" class="tab-button">Bonds</button>
             <button id="convertiblesTabButton" type="button" class="tab-button">Convertibles</button>
+            <button id="equityTabButton" type="button" class="tab-button">Equity</button>
             <button id="moversTabButton" type="button" class="tab-button">Price Movers</button>
             <button id="documentationTabButton" type="button" class="tab-button">Documentation</button>
             <button id="exceptionsTabButton" type="button" class="tab-button">Exceptions</button>
           </div>
         </section>
 
-        <div id="issuerTabPanel">
+        <div id="marketTabPanel">
+          <section class="card">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">Market Snapshot</p>
+                <p id="marketStatus" class="status-bar"></p>
+                <p class="chart-title" style="font-weight:400;opacity:0.7">High yield &amp; leveraged loan spreads, sector performance, and recent defaults. Source: J.P. Morgan.</p>
+              </div>
+            </div>
+          </section>
+          <div id="marketContent"></div>
+        </div>
+
+        <div id="issuerTabPanel" class="hidden">
         <section class="card">
           <p id="anchorDate" class="anchor-date"></p>
           <div class="toolbar">
@@ -261,6 +276,31 @@
           </section>
         </div>
 
+        <div id="equityTabPanel" class="hidden">
+          <section class="card">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">Equity Screen</p>
+                <p id="equityStatus" class="status-bar"></p>
+                <p class="chart-title" style="font-weight:400;opacity:0.7">USD millions for TEV, Market Cap, and Opps Holdings; Share Price in Local Currency; Opps Holdings excludes value of warrants.</p>
+              </div>
+              <div class="toolbar-group">
+                <label>Search
+                  <input id="equitySearchInput" type="text" placeholder="Ticker or name" />
+                </label>
+              </div>
+            </div>
+          </section>
+          <section class="card">
+            <div class="table-wrap">
+              <table>
+                <thead id="equityHead"></thead>
+                <tbody id="equityBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
         <div id="moversTabPanel" class="hidden">
           <section class="card">
             <div class="detail-header">
@@ -441,6 +481,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260710a"></script>
+    <script src="/static/app.js?v=20260721c"></script>
   </body>
 </html>

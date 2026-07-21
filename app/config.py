@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 DEFAULT_WORKBOOK = DATA_DIR / "Master_File.xlsx"
+DEFAULT_MARKET_DATA = DATA_DIR / "Market_Data.xlsx"
 
 load_dotenv(BASE_DIR / ".env")
 
@@ -20,6 +21,7 @@ class Settings:
     username: str
     password: str
     workbook_path: Path
+    market_data_path: Path
     cookie_secure: bool
     openai_api_key: str
     openai_ca_bundle: str
@@ -35,6 +37,7 @@ def load_settings() -> Settings:
         username=os.getenv("APP_USERNAME", "admin"),
         password=os.getenv("APP_PASSWORD", "admin"),
         workbook_path=Path(os.getenv("WORKBOOK_PATH", DEFAULT_WORKBOOK)),
+        market_data_path=Path(os.getenv("MARKET_DATA_PATH", DEFAULT_MARKET_DATA)),
         cookie_secure=cookie_secure,
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         openai_ca_bundle=os.getenv("OPENAI_CA_BUNDLE", ""),
